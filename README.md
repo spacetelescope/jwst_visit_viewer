@@ -19,7 +19,7 @@ Installation
 - pysiaf: https://github.com/spacetelescope/pysiaf
 - jwst_gtvt: https://github.com/spacetelescope/jwst_gtvt
 
-*Note, currently a dev version of pysiaf is required, including this PR: https://github.com/spacetelescope/pysiaf/pull/177 *
+_Note, currently a dev version of pysiaf is required, including this PR: https://github.com/spacetelescope/pysiaf/pull/177_
 
 
 Where to find examples of how to use this package
@@ -31,9 +31,9 @@ See [this notebook](https://github.com/spacetelescope/jwst_visit_viewer/blob/mas
 Contributing Code, Documentation, or Feedback
 ---------------------------------------------
 
-See CONTRIBUTING.md
+See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 License
 -------
 
-See LICENSE.md
+See [LICENSE.md](LICENSE.md)
