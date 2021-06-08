@@ -22,11 +22,14 @@ def view(visitfilename, verbose=False, save=False, **kwargs):
     visit = visitparser.VisitFileContents(visitfilename)
     visitplotter.multi_plot(visit, save=save, verbose=verbose, **kwargs)
 
-
-if __name__ == '__main__':
+def main():
+    """ Main function for command line arguments """
     parser = argparse.ArgumentParser(
         description='Visit Viewer'
     )
     parser.add_argument('filename', metavar='filename', type=str, help='Filename of visit file')
     args = parser.parse_args()
-    view(args.filename)
+    view(args.filename, save=True)
+
+if __name__ == '__main__':
+    main()
