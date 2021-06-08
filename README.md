@@ -15,11 +15,25 @@ Installation
 
 
 **Requirements:**
-- astropy, matplotlib, etc
+- numpy, astropy, matplotlib, etc
 - pysiaf: https://github.com/spacetelescope/pysiaf
 - jwst_gtvt: https://github.com/spacetelescope/jwst_gtvt
 
 _Note, currently a dev version of pysiaf is required, including this PR: https://github.com/spacetelescope/pysiaf/pull/177_
+
+
+**Basic Installation**:
+
+Install this repo:
+
+    pip install git+https://github.com/spacetelescope/jwst_visit_viewer.git
+
+Install dependencies (assuming you already have the basics):
+
+    pip install git+https://github.com/spacetelescope/jwst_gtvt.git
+
+    # Special, temporary: install dev branch with sky transforms:
+    pip install git+https://github.com/mperrin/pysiaf.git@sky_transforms
 
 
 Usage Instructions

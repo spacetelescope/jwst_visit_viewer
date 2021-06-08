@@ -1,3 +1,10 @@
+[project]
+dependencies = [
+    'matplotlib > 3',
+    'jwst_gtvt',
+    'pysiaf'
+]
+
 [build-system]
 requires = [
     "setuptools>=38.2.5",
