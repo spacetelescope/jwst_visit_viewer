@@ -239,11 +239,20 @@ class VisitFileContents(object):
         """
         apernames = []
         if activity.scriptname.startswith("NRC"):
-            config = self.si_activities[0].CONFIG
-            if config == 'NRCAALL' or config == 'NRCALL':
-                [apernames.append(f'NRCA{n}_FULL') for n in (1, 2, 3, 4)]
-            if config == 'NRCBALL' or config == 'NRCALL':
-                [apernames.append(f'NRCB{n}_FULL') for n in (1, 2, 3, 4)]
+            if activity.scriptname != 'NRCSUBMAIN':
+                # NIRCam full-frame readouts, one or both modules
+                config = self.si_activities[0].CONFIG
+                if config == 'NRCAALL' or config == 'NRCALL':
+                    [apernames.append(f'NRCA{n}_FULL') for n in (1, 2, 3, 4)]
+                if config == 'NRCBALL' or config == 'NRCALL':
+                    [apernames.append(f'NRCB{n}_FULL') for n in (1, 2, 3, 4)]
+            else:
+                # NRCSUBMAIN configures NIRCam subarray readouts
+                if activity.SUBARRAY=='SUB96DHSPILA':
+                    apernames.append('NRCA3_DHSPIL_SUB96')
+                elif activity.SUBARRAY == 'SUB96DHSPILB':
+                    apernames.append('NRCB4_DHSPIL_SUB96')
+                # Add other NIRCam subarrays of interest here...
 
         elif activity.scriptname == 'SCWFCMAIN':
             # WF control 'move mirrors' script; no images taken
@@ -298,6 +307,8 @@ class VisitFileContents(object):
         text = self.template
         if self.template.startswith("WFSC"):
             act = self.si_activities[0]
+            if self.template.startswith("WFSC NIRCam Coarse Phasing") and act.scriptname=='NRCSUBMAIN':  # skip over the subarray calls at the start of a coarse phasing WFSC visit
+                act = self.si_activities[3]
             #text += f"\n    using {nrc_module}"
             mod = act.CONFIG[3]  # a or B
             description = "NRC " + mod + ", {act.FILTSHORT" + mod + "}+{act.PUPILSHORT" + mod + "}" +\
