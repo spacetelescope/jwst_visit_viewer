@@ -85,7 +85,7 @@ def retrieve_2mass_image(visit, ra=None, dec=None, verbose=True, redownload=Fals
     return hdu
 
 
-def plot_visit_fov(visit, subplotspec=None):
+def plot_visit_fov(visit, verbose=False, subplotspec=None):
     """Make a nice annotated plot of a visit FOV"""
 
     # let's center the plot on the master chief ray (MCF; between NIRCams).
@@ -96,7 +96,7 @@ def plot_visit_fov(visit, subplotspec=None):
     fgs_aperture.set_attitude_matrix(attmat)
     mcf_ra, mcf_dec = fgs_aperture.tel_to_sky(0,-468) # master chief ray location relative to V2V3
 
-    img_hdu = retrieve_2mass_image(visit, ra = mcf_ra, dec=mcf_dec)
+    img_hdu = retrieve_2mass_image(visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
 
     wcs = astropy.wcs.WCS(img_hdu[0].header)
 
@@ -200,31 +200,6 @@ def plot_visit_fov(visit, subplotspec=None):
     return ax
 
 ##--- Functions for plotting the visit field of REGARD
-
-
-
-def setup_for_proj(center_longitude=0, size=8, label=False, projection='lambert', subplotspec=None):
-    """Setup Lambert axes for showing JWST Field Of Regard"""
-
-    # Need to flip sign on center longitude, because of R.A. convention
-    if subplotspec is None:
-        fig = plt.figure(figsize=(size,size))
-        ax = fig.add_subplot( projection=projection, center_longitude=-center_longitude)
-    else:
-        #ax = plt.subplot(subplotspec, projection=projection, center_longitude=-center_longitude)
-        ax = plt.subplot(subplotspec, projection=projection)
-
-    # draw CVZs:
-    #lon = np.linspace(-np.pi, np.pi, 10)
-    #lat = np.ones(10)*np.deg2rad(85)
-    #ax.plot(lon, lat, color='blue')   # N CVZ
-    #ax.plot(lon, -lat, color='blue')  # S CVZ
-
-    if not label:
-        ax.set_xticklabels([])
-    ax.grid(True)
-    return ax
-
 
 def plot_circle_coords(x1, x2, from_frame, to_frame, ax, **plot_kwargs):
     """Plot a circle (great or otherwise) with astronomical coordinate transforms"""
@@ -512,7 +487,7 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
     sun_roll = np.rad2deg(np.arcsin( np.sin(vr) * np.cos(vp) ))
     sun_pitch = np.rad2deg(np.arctan( np.tan(vp) / np.cos(vr)))
 
-    print( vehicle_pitch.mean(), sun_pitch.mean(), vehicle_roll.mean(), sun_roll.mean())
+    #print( vehicle_pitch.mean(), sun_pitch.mean(), vehicle_roll.mean(), sun_roll.mean())
 
     with astropy.visualization.time_support():
 
@@ -523,6 +498,8 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
         for lim in [-5, 45]:
             ax_pitch.axhline(lim, ls='--', color='red')
         ax_pitch.set_ylabel("Pitch\n[deg]")
+        ax_pitch.set_yticks([-5, 0, 22.5, 45])
+        ax_pitch.axhline(0, color='black', alpha=0.3, ls=":")
         # ax_pitch.set_xlabel("Date time [UTC]")
 
         ax_roll.plot_date(times.plot_date, vehicle_roll, ls='-', lw=3, marker=None, label='Vehicle roll')
@@ -532,8 +509,6 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
         ax_roll.plot_date(times.plot_date, max_allowed_roll, ls='--', color='red', marker=None)
         ax_roll.plot_date(times.plot_date, -max_allowed_roll, ls='--', color='red', marker=None)
 
-        #for lim in [-7, 7]:  # TODO this is more subtle, depends on pitch
-        #    ax_roll.axhline(lim, ls=':', color='red')
         ax_roll.set_ylabel("Roll\n[deg]")
         ax_roll.set_xlabel("Date time [UTC]")
 
@@ -548,7 +523,7 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
                  transform=plt.gcf().transFigure)
 
 
-def multi_plot(visit, save=True):
+def multi_plot(visit, verbose=False, save=False):
     """ Main top-level function for visitviewer"""
     fig = plt.figure(figsize=(16, 9))
 
@@ -560,7 +535,7 @@ def multi_plot(visit, save=True):
     r_gridspec_kw = {'hspace': 0.2, 'wspace': 0.2, 'height_ratios': [0.3, 1, 1, 0.3], 'width_ratios': [1, 1.5]}
     gs_r = gridspec.GridSpecFromSubplotSpec(4, 2, subplot_spec=gs_outer[1],
                                             **r_gridspec_kw)
-    r2_gridspec_kw = {'hspace': 0.05, 'wspace': 0.2, 'height_ratios': [0.3, 1, 0.3, 0.3, 0.5]}
+    r2_gridspec_kw = {'hspace': 0.05, 'wspace': 0.2, 'height_ratios': [0.3, .7, 0.3, 0.3, 0.4]}
     gs_r2 = gridspec.GridSpecFromSubplotSpec(5, 1, subplot_spec=gs_outer[1],
                                              **r2_gridspec_kw)
 
@@ -583,5 +558,6 @@ def multi_plot(visit, save=True):
              transform = fig.transFigure)
 
     if save:
-        plt.savefig(f"{visit.visitid}_view.pdf")
-
+        outname = f"{visit.visitid}_view.pdf"
+        plt.savefig(outname)
+        print(f"File saved to {outname}")

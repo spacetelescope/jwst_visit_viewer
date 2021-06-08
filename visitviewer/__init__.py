@@ -17,10 +17,10 @@ if not os.path.dirname(__file__) in sys.path:
 from . import visitparser, visitplotter
 from .visitparser import VisitFileContents
 
-def view(visitfilename, save=True, **kwargs):
+def view(visitfilename, verbose=False, save=False, **kwargs):
     """top-level interface for visit quick view"""
     visit = visitparser.VisitFileContents(visitfilename)
-    visitplotter.multi_plot(visit, save, **kwargs)
+    visitplotter.multi_plot(visit, save=save, verbose=verbose, **kwargs)
 
 
 if __name__ == '__main__':
