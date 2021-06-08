@@ -22,7 +22,7 @@ Installation
 _Note, currently a dev version of pysiaf is required, including this PR: https://github.com/spacetelescope/pysiaf/pull/177_
 
 
-Where to find examples of how to use this package
+Usage Instructions
 -------------------------------------------------
 
 See [this notebook](https://github.com/spacetelescope/jwst_visit_viewer/blob/master/docs/Visit%20Viewer%20Docs%20and%20Usage.ipynb) in the Docs directory.
@@ -36,4 +36,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 License
 -------
 
-See [LICENSE.md](LICENSE.md)
+BSD. See [LICENSE.md](LICENSE.md)
