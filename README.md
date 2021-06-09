@@ -10,7 +10,7 @@ given visit will be pointed, the observatory attitude with respect to the sun
 and the field of regard constraints, and which detector(s) will be used to take
 data.
 
-**Caveats, warnings, and disclaimers:** This is an official tool provided on a best-effort basis.
+**Caveats, warnings, and disclaimers:** This is an unofficial tool provided on a best-effort basis.
 Coordinate transforms may not yet be precisely correct in all details. Some aspects of V to J frame
 transforms are not yet tracked in the SIAF PRD content.
 
