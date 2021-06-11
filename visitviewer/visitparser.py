@@ -188,7 +188,7 @@ class VisitFileContents(object):
 
     """
 
-    def __init__(self, filename):
+    def __init__(self, filename, no_gspa_yoffset=False, **kwargs):
 
         # Find the basics
         self.filename = filename
@@ -221,6 +221,11 @@ class VisitFileContents(object):
         self.si_activities = [a for a in self.activities if (not isinstance(a, GuideStatement) and
                                                              (a.scriptname != 'GENWAITMAIN'))]
 
+        # Record whether or not to interpret the GSPA parameter as having an angular offset of FGS V3IdlYangle, or not
+        # PPS 14.14.1 and earlier do not apply this offset, but later versions more correctly do so.
+        # This affects the inferred attitude matrix.
+        self._no_gspa_yoffset = no_gspa_yoffset
+
     def _find_statements(self, name):
         """ find all matching statements, return as list"""
         return [s for s in self.statements if s.name == name]
@@ -234,6 +239,9 @@ class VisitFileContents(object):
 
     def _activity_apertures_used(self, activity):
         """ What are the main apertures used in this activity, which we should highlight on the plot?
+
+        This function checks just a single OSS activity; see apertures_used() for the full version
+        across the entire visit.
 
         Return list of SIAF aperture names
         """
@@ -313,12 +321,15 @@ class VisitFileContents(object):
             mod = act.CONFIG[3]  # a or B
             description = "NRC " + mod + ", {act.FILTSHORT" + mod + "}+{act.PUPILSHORT" + mod + "}" +\
                           ", readout {act.PATTERN}, NGROUPS={act.NGROUPS:.0f}, NINTS={act.NINTS:.0f}"
-            text += "\n  using "+ description.format(act=act)
+            try:
+                text += "\n  using "+ description.format(act=act)
+            except AttributeError:
+                pass # if we can't format the above just continue benignly
 
         return text
 
     def summarize(self):
-        """Summarize visit file information
+        """Longer summary of visit file information
 
         Note, this was written before VPR, and is much simpler / less full-featured than that.
         """
@@ -346,7 +357,16 @@ class VisitFileContents(object):
             # Check for presence of AUX statement
 
     def get_attitude_matrix(self, step='slew'):
-        """Return attitude matrix for 'id' or 'science' attitudes in a visit"""
+        """Return attitude matrix for 'id' or 'science' attitudes in a visit
+
+        For reference, see https://innerspace.stsci.edu/display/OPGS/OSS+8.4+%28Forms+7.2%29+Pointing+OPGS+Rules#OSS8.4(Forms7.2)PointingOPGSRules-Slew
+
+        For FINEGUIDE or TRACK there is always a call to SCSLEWMAIN followed by a call to FGSMAIN, with similar parameters
+        provided to both. For convenience we pull these out from the SLEW statement, at least for now.
+
+        TODO: improve/enhance for more complicated visits with multiple guide stars, multiple slews, etc?
+
+        """
         visit = self
 
         # Read pointing information from SLEW or FGSMAIN statements in the visit
@@ -377,11 +397,22 @@ class VisitFileContents(object):
         # Convert from FGS1/2 Ideal coords in arcseconds to telescope FOV coordinates in arcseconds
         xtel, ytel = fgs_aperture.idl_to_tel(x_idl, y_idl)
 
-        fgs_Yics_offset = 1.25  # Degrees, rotation offset between FGS1 Yics and V3PA
+        # The spacecraft ACS is expecting FGS Yics PA, which may or may not be what's in the visit file.
+        # Here we ourselves want to get the V3PA, because that's what the attitude_matrix transform function wants.
+        if self._no_gspa_yoffset:
+            # The provided GSPA should be interpreted directly as the V3 PA at that guide star
+            v3pa_at_guidestar = pa
+        else:
+            # The provided GSPA should be interpreted as the PA of the FGS Ideal coordinate system Y axis,
+            # which is rotated relative to the V3 axis by some amount
+
+            # TODO double check sign convention here... Lallo and Sohn provided opposite recommendations...
+            fgs_Yics_offset = -1.25  # Degrees, rotation offset between FGS1 Yics and V3PA, from SIAF
+            v3pa_at_guidestar =  pa - fgs_Yics_offset
 
         # Compute attitude matrix
         attmat = pysiaf.utils.rotations.attitude_matrix(xtel, ytel,
-                                                        ra, dec, pa - fgs_Yics_offset)
+                                                        ra, dec, v3pa_at_guidestar)
         return attmat
 
     def get_guider_aperture(self, return_name=False):
@@ -399,8 +430,3 @@ class VisitFileContents(object):
         else:
             fgs_aperture = pysiaf.Siaf('FGS').apertures[fgs_aperture_name]
             return fgs_aperture
-
-
-if __name__ == "__main__":
-    vfc = VisitFileContents('V00737001001.vst')
-    vfc.summarize()

@@ -14,6 +14,11 @@ data.
 Coordinate transforms may not yet be precisely correct in all details. Some aspects of V to J frame
 transforms are not yet tracked in the SIAF PRD content.
 
+A difference in the assumed ephemeris for JWST can result in inconsistencies in
+field of regard calculations. If this tool warns that a given visit may be out
+of the field of regard, take that with a grain of salt for now, and check with
+the real PPS experts for a more authoritative answer.
+
 
 Installation
 ------------

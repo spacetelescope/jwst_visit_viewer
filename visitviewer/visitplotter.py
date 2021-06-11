@@ -1,4 +1,6 @@
 import os
+import platform
+import subprocess
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,6 +15,20 @@ import pysiaf
 import jwst_gtvt.find_tgt_info
 import jwst_gtvt.ephemeris_old2x as EPH
 
+
+# Visit plotting tools
+
+# A note about interpretation of GSPA. This is subtle, and the implementation varies depending on PPS version.
+# OSS passes through the GSPA parameter to spacecraft ACS for slews. ACS does not utilize the V frame in its pointing control. 
+# - The GSPA parameter is interpreted as the PA of the FGS1 Ideal coordinate system ("FGS ics"), and transformed to the 
+#   spacecraft J frame via the FGS_to_STA k-constant matrix. In so doing, the GSPA is interpreted as the PA of th FGS Yics
+#   angle *at the position of the guide star*
+# - Note that the FGS1 Yics differs from the V3 axis by ~ -1.25 degrees
+#
+# In PPS versions 14.14.1 and below, this was neglected and OPGS provides the computed V3PA at the guide star as the GSPA parameter. 
+#   (incorrectly / inconsistently, resulting in unexpected attitudes)
+# In later versions, PPS applies the compensation and provides the FGS Y ideal PA, which spacecraft ACS can then transform to the J frame
+#
 
 
 
@@ -31,7 +47,8 @@ def load_all_siafs():
     'MIRI': pysiaf.Siaf('MIRI')
     }
 
-
+# let's just load these once and save in a global to reuse as needed, for efficiency
+SIAFS = load_all_siafs()
 
 ##--- Functions for plotting the visit field of VIEW
 
@@ -85,18 +102,30 @@ def retrieve_2mass_image(visit, ra=None, dec=None, verbose=True, redownload=Fals
     return hdu
 
 
-def plot_visit_fov(visit, verbose=False, subplotspec=None):
+def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     """Make a nice annotated plot of a visit FOV"""
 
-    # let's center the plot on the master chief ray (MCF; between NIRCams).
+    # let's center the plot on the master chief ray (MCF; between NIRCams) at the science attitude.
     # This works better than centering on the guide star.
     # Use SIAF transforms to infer the MCF pointing in RA, Dec.
-    fgs_aperture = visit.get_guider_aperture()
-    attmat = visit.get_attitude_matrix(step='slew')
+    fgs_aperture_name = visit.get_guider_aperture(return_name=True)
+    fgs_aperture = SIAFS['FGS'].apertures[fgs_aperture_name]
+    attmat = visit.get_attitude_matrix(step='sci')
     fgs_aperture.set_attitude_matrix(attmat)
-    mcf_ra, mcf_dec = fgs_aperture.tel_to_sky(0,-468) # master chief ray location relative to V2V3
+    mcf_ra, mcf_dec = fgs_aperture.tel_to_sky(0,-468)   # RA, Dec of master chief ray location (between NIRCam A+B)
 
-    img_hdu = retrieve_2mass_image(visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
+
+    # Compute RA, Dec, PA of the V1 axis, for comparison to values in SciOps OP delivery report
+    v1_ra, v1_dec = fgs_aperture.tel_to_sky(0,0)        # RA, Dec of V1 axis reference location
+    v1pv3_ra, v1pv3_dec = fgs_aperture.tel_to_sky(0,1)  # Will use to compute V3PA at V1 axis reference location
+    v1c = coords.SkyCoord(v1_ra, v1_dec, unit='deg', frame='icrs')
+    v1pv3c = coords.SkyCoord(v1pv3_ra, v1pv3_dec, unit='deg', frame='icrs')
+    v3pa_at_v1 = v1c.position_angle(v1pv3c).deg
+
+    if use_dss:
+        img_hdu = retrieve_dss_image(visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
+    else:
+        img_hdu = retrieve_2mass_image(visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
 
     wcs = astropy.wcs.WCS(img_hdu[0].header)
 
@@ -121,15 +150,24 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None):
 
     #-- Mark guide star
     gscolor='yellow'
+    v1color='white'
 
     slew = visit.slew
+    # Compute expected V3PA
+    v3pa_at_gs = visit.slew.GSPA + (0 if visit._no_gspa_yoffset else fgs_aperture.V3IdlYAngle)
 
-    plt.scatter(slew.GSRA, slew.GSDEC,  s=200, edgecolor=gscolor, facecolor='none',
+
+    plt.scatter(visit.slew.GSRA, visit.slew.GSDEC,  s=200, edgecolor=gscolor, facecolor='none',
             transform=ax.get_transform('icrs'))
-
-    plt.text(slew.GSRA, slew.GSDEC,"\nguide star",
+    plt.text(visit.slew.GSRA, visit.slew.GSDEC,"\nguide star",
              transform=ax.get_transform('icrs'),
              horizontalalignment='left', verticalalignment='top', color=gscolor)
+
+    plt.scatter([v1_ra], [v1_dec], marker='+', s=50, color=v1color,
+            transform=ax.get_transform('icrs'))
+    plt.text(v1_ra, v1_dec, "\nV1 axis",
+             transform=ax.get_transform('icrs'), fontsize=10,
+             horizontalalignment='left', verticalalignment='top', color=v1color)
 
     # subsequent annotations can mess up the axes limits, so save here and restore later
     # this is a hacky workaround
@@ -151,8 +189,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None):
         fgs_detector = 1 if visit.slew.DETECTOR=='GUIDER1' else 2
         guide_det_info = f", on FGS{fgs_detector}"
 
-    # Plot FGS aperture at ID attitude (if in a mode using FGS)
-    if guidemode != 'COARSE':
+        # Plot FGS aperture at ID attitude
         fgs_aperture.set_attitude_matrix(attmatid)
         fgs_aperture.plot(frame='sky', transform=ax.get_transform('icrs'), color=gscolor, fill=False)
         plt.text(0.02, 0.02, f"Yellow = ID attitude",
@@ -163,10 +200,9 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None):
                                attitude_matrix=attmatsci, transform=ax.get_transform('icrs'), alpha=0.4, fill=False)
 
     # Plot the active apertures, more visibly
-    siafs = load_all_siafs()
     for apername in visit.apertures_used():
         # look up aperture from that aperture name
-        aperture = siafs[apername[0:3]][apername]
+        aperture = SIAFS[apername[0:3]][apername]
         # plot at the correct attitude
         aperture.set_attitude_matrix(attmatsci)
         aperture.plot(frame='sky', transform=ax.get_transform('icrs'), color='cyan', fill=True, fill_alpha=0.2)
@@ -185,13 +221,19 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None):
     plt.text(0.98, template_ypos, f"Template = {visit.template}", color='white',
             transform=ax.transAxes, horizontalalignment='right',
             verticalalignment='top')
-    plt.text(0.02, 0.05, f"Guide star at {visit.slew.GSRA}, {visit.slew.GSDEC}, GSPA={visit.slew.GSPA}\nGuide mode = {guidemode}{guide_det_info}",
+    plt.text(0.02, 0.05, f"Guide star at {visit.slew.GSRA:.7f}, {visit.slew.GSDEC:.7f}, GSPA={visit.slew.GSPA}\nGuide mode = {guidemode}{guide_det_info}",
             color=gscolor, transform=ax.transAxes)
     plt.text(0.98, 0.05, f"Shaded detectors are used\n in this observation",
             color='cyan', transform=ax.transAxes, horizontalalignment='right')
     plt.text(0.98, 0.02, f"Cyan = Science attitude",
             color='cyan', transform=ax.transAxes, horizontalalignment='right')
+    plt.text(0.38, 0.02, f"V1 axis at {v1_ra:.3f}, {v1_dec:.3f}\nV3PA={v3pa_at_gs:.3f} at GS, {v3pa_at_v1:.3f} at V1 axis",
+            color='white', transform=ax.transAxes)
 
+    if visit._no_gspa_yoffset:
+        plt.text(0.00, -0.035,
+                 f"Interpreting GSPA parameter like PPS$\leq$14.14.1:\nGSPA does not include FGS Yics rotation.",
+                 color='orangered', transform=ax.transAxes, verticalalignment='top')
 
     # re-establish the axes limits
     ax.set_xlim(*xlim)
@@ -442,12 +484,14 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
 
     # find where the V1 axis will be for this visit
     attmat = visit.get_attitude_matrix(step='slew')
-    fgs_aperture = visit.get_guider_aperture()
+    fgs_aperture_name = visit.get_guider_aperture(return_name=True)
+    fgs_aperture = SIAFS['FGS'].apertures[fgs_aperture_name]
     fgs_aperture.set_attitude_matrix(attmat)
     #v1coords = astropy.coordinates.SkyCoord(*fgs_aperture.tel_to_sky(0,0), unit='deg', frame='icrs')
     v1ra, v1dec = fgs_aperture.tel_to_sky(0,0)
     v1ra = np.deg2rad(v1ra)
     v1dec = np.deg2rad(v1dec)
+
 
     #sun = astropy.coordinates.get_sun(times)
 
@@ -479,7 +523,7 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
 
     vehicle_pitch = sun_angle - 90
 
-    V3PA = visit.slew.GSPA - 1.25
+    V3PA = visit.slew.GSPA + fgs_aperture.V3IdlYAngle
     vehicle_roll = V3PA - v3pa_nominal   # TODO update with V3PA not GSPA
 
     vr = np.deg2rad(vehicle_roll)
@@ -515,7 +559,10 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
         for ax in [ax_pitch, ax_roll]:
             for label in ax.get_xticklabels():
                 label.set_rotation(40)
-            ax.legend(loc='upper right')
+            ax.legend(loc='upper right', fontsize=8)
+
+    ax_pitch.set_title(f"Mean pitch: {vehicle_pitch.mean():.2f}$^\circ$, Roll range: {vehicle_roll[0]:.2f}$^\circ$ to {vehicle_roll[-1]:.2f}$^\circ$",
+                       fontweight='bold', fontsize=9, color='C0')
 
     if np.any( np.abs(vehicle_roll) > max_allowed_roll):
         plt.text(0.98, 0.1, 'WARNING! Vehicle roll is outside of limits at some times!', color='red',
@@ -523,14 +570,14 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
                  transform=plt.gcf().transFigure)
 
 
-def multi_plot(visit, verbose=False, save=False):
+def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=False):
     """ Main top-level function for visitviewer"""
     fig = plt.figure(figsize=(16, 9))
 
     # Set up a bunch of plot axes, complicatedly via nested grids
     # (this could be simplified but I'm adapting from other existing code...)
     gs_outer = plt.GridSpec(1, 2, width_ratios=[9,7])
-    gs_outer.update(bottom=0.05, top=0.95, wspace=0.2, left=0.02, right=0.98)
+    gs_outer.update(bottom=0.05, top=0.95, wspace=0.2, left=0.04, right=0.98)
 
     r_gridspec_kw = {'hspace': 0.2, 'wspace': 0.2, 'height_ratios': [0.3, 1, 1, 0.3], 'width_ratios': [1, 1.5]}
     gs_r = gridspec.GridSpecFromSubplotSpec(4, 2, subplot_spec=gs_outer[1],
@@ -540,7 +587,7 @@ def multi_plot(visit, verbose=False, save=False):
                                              **r2_gridspec_kw)
 
     # Now make the plots, via the functions defined above
-    plot_visit_fov(visit, subplotspec=gs_outer[0])
+    plot_visit_fov(visit, subplotspec=gs_outer[0], use_dss=use_dss)
     show_field_of_regard_ecliptic(visit, subplotspec=gs_r[1, 0])
     show_field_of_regard_ra_dec(visit, subplotspec=gs_r[1, 1])
     show_pitch_roll(visit, gs_r2[2, 0], gs_r2[3, 0])
@@ -561,3 +608,6 @@ def multi_plot(visit, verbose=False, save=False):
         outname = f"{visit.visitid}_view.pdf"
         plt.savefig(outname)
         print(f"File saved to {outname}")
+
+        if platform.system()=='Darwin':
+            subprocess.run(["open", outname])
