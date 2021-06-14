@@ -29,7 +29,7 @@ Installation
 - pysiaf: https://github.com/spacetelescope/pysiaf
 - jwst_gtvt: https://github.com/spacetelescope/jwst_gtvt
 
-_Note, currently a dev version of pysiaf is required, including this PR: https://github.com/spacetelescope/pysiaf/pull/177_
+_Note, an up-to-date dev version of pysiaf is required, including this PR recently merged: https://github.com/spacetelescope/pysiaf/pull/177_
 
 
 **Basic Installation**:
@@ -42,8 +42,7 @@ Install dependencies (assuming you already have the basics):
 
     pip install git+https://github.com/spacetelescope/jwst_gtvt.git
 
-    # Special, temporary: install dev branch with sky transforms:
-    pip install git+https://github.com/mperrin/pysiaf.git@sky_transforms
+    pip install git+https://github.com/spacetelescope/pysiaf.git
 
 
 Usage Instructions
