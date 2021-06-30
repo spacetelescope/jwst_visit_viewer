@@ -386,9 +386,15 @@ class VisitFileContents(object):
         elif step == 'sci':
             ra = visit.slew.GSRA
             dec = visit.slew.GSDEC
-            pa = visit.slew.GSPASCI
-            x_idl = visit.slew.GSXSCI
-            y_idl = visit.slew.GSYSCI
+            try:
+                pa = visit.slew.GSPASCI
+                x_idl = visit.slew.GSXSCI
+                y_idl = visit.slew.GSYSCI
+            except AttributeError:
+                # Fall back to these if there is no science attitude provided?
+                pa = visit.slew.GSPA
+                x_idl = visit.slew.GSX
+                y_idl = visit.slew.GSY
         else:
             raise ValueError("step must be one of {slew, id, sci}.")
 
