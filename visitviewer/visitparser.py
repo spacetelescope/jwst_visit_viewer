@@ -436,3 +436,81 @@ class VisitFileContents(object):
         else:
             fgs_aperture = pysiaf.Siaf('FGS').apertures[fgs_aperture_name]
             return fgs_aperture
+
+    def get_nrcfilecount(self):
+        """Return count of NIRCam files expected to be produced by the visit
+
+        Contributed by Karl Misselt, NIRCam team, U of Arizona
+        ----------
+        """
+        nrcFileCount = 0
+        # might need others...
+        # Don't really know what I'm doing here in detail, but should work for things like NRCMAIN and NRCSUBMAIN+NRCMAIN
+        # NRCSUBMAIN is a subarray configuration call and MUST (?) be followed by an expose CONFIG
+        # Don't know how to count NRCIPRMAIN, NRCCORON, NRCTSIMAGE need to find visit examples to see
+        # what other tags to pull out.
+        # AllowedScripts are _sciptnames; called in SUBMAIN+MAIN calls.
+        # Some NRCWFCPMAIN calls don't seem to produce an obvious exposure in visit files...
+        #    (MP replies: that's correct, those calls move mirrors rather than taking exposures)
+        AllowedScripts = ["NRCMAIN", "NRCSUBMAIN", "NRCTAMAIN", "NRCFAMMAIN", "NRCWFCPMAIN", "NRCIPRMAIN", "NRCCORON",
+                          "NRCTSIMAGE"]
+        # AllowedConfigs define the commanded detector combinations. Depending on ExpType/TargetType, this will
+        # define the number of SCA. DefaultNSCA is what we would naively expect
+        AllowedConfigs = ["NRCA1", "NRCA2", "NRCA3", "NRCA4", "NRCALONG", "NRCASHORT", "NRCAALL",
+                          "NRCB1", "NRCB2", "NRCB3", "NRCB4", "NRCBLONG", "NRCBSHORT", "NRCBALL",
+                          "NRCALL"]
+        DefaultNSca = [1, 1, 1, 1, 1, 4, 5, 1, 1, 1, 1, 1, 4, 5, 10]
+        Config_To_NSca = dict(zip(AllowedConfigs, DefaultNSca))
+
+        # May not need any of these defined?
+        # AllowedExpTypes are "EXPTYPE=XXXX" in SUBMAIN calls
+        # Why "FULL" lives in a SUBMAIN call, I've yet to grok.
+        AllowedExpTypes = ["TA", "POINTSOURCE", "WF", "FULL", "LOS"]
+        # AllowedTargetTypes are "TARGTYPE=XXXX" in NRCMAIN/NRCWFCPMAIN calls. And NRCSUBMAIN calls. Sheesh.
+        # I *think* TIMESERIES is the only one I need worry about - nsca will always be 2 there, 1 SW, 1 LW
+        AllowedTargetTypes = ["TIMESERIES", "EXTERNAL", "DARK"]
+
+        for i in range(len(self.si_activities)):
+            _scriptname = self.si_activities[i].scriptname
+            if _scriptname in AllowedScripts:
+                # For e.g. NRCSUBMAIN, there's no exposure taken, it's just configuring the ASIC.
+                # There should be no other information we need from SUBMAIN since the configuration will be
+                # repeated in the next activity. So for SUBMAIN we just skip to the next activity. Others?
+                # TODO: Sort PIL imaging.
+                #       Sort TIMESERIES
+                #       Sort POINTSOURCE
+                #       For POINTSOURCE, definition is in associated NRCSUBMAIN call; extract and carry
+                #           over to next activity.
+                #           Is POINTSOURCE (SUBMAIN) and TIMESERIES (MAIN) 1 or 2 detectors?
+                #       How does GRISM get called? Always +3.  Definition is in NRCSUBMAIN call; extract
+                #           and carry over to next activity
+
+                # 'Null' _exposureType so that we only set it if the previous acticity was NRCSUBMAIN
+                _exposureType = None
+                if _scriptname == "NRCSUBMAIN":
+                    # Save EXPTYPE here; continue and next statement should be NRCMAIN (Check/Verify algorithmically?)
+                    _exposureType = self.si_activities[i].EXPTYPE
+                    continue
+                if _scriptname == "NRCTAMAIN":
+                    # always a single SCA
+                    nrcFileCount += 1
+                elif _scriptname == "NRCCORON":
+                    # always 1 scas
+                    nrcFileCount += 1
+                elif _scriptname == "NRCMAIN":
+                    # Workhorse - Will need to check TIMESERIES, GRISM, POINTSOURCE, etc.
+                    nrcFileCount += Config_To_NSca[self.si_activities[i].CONFIG]
+                elif _scriptname == "NRCWFCPMAIN":
+                    # Seems two types, one that generates exposures, and one that... doesn't; but does
+                    # the mirror move. From jse script for expose, looks like 2 exposures per 'call'
+                    # Differentiate between the 2 types of WFCP calls based on existence of WFCGROUP
+                    # in the activity statement.
+                    try:
+                        self.si_activities[i].WFCGROUP
+                        continue
+                    except:
+                        # WFCP generates 2 files per activity
+                        _factor = 2
+                        nrcFileCount += _factor * Config_To_NSca[self.si_activities[i].CONFIG]
+
+        return nrcFileCount
