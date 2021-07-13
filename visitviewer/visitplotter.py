@@ -570,7 +570,7 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
                  transform=plt.gcf().transFigure)
 
 
-def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=False):
+def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=False, output_dir=None):
     """ Main top-level function for visitviewer"""
     fig = plt.figure(figsize=(16, 9))
 
@@ -606,6 +606,8 @@ def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=
 
     if save:
         outname = f"{visit.visitid}_view.pdf"
+        if output_dir is not None:
+            outname = os.path.join(output_dir, outname)
         plt.savefig(outname)
         print(f"File saved to {outname}")
 
