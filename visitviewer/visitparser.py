@@ -249,7 +249,10 @@ class VisitFileContents(object):
         if activity.scriptname.startswith("NRC"):
             if activity.scriptname != 'NRCSUBMAIN':
                 # NIRCam full-frame readouts, one or both modules
-                config = self.si_activities[0].CONFIG
+                if activity.scriptname != 'NRCIPRMAIN':
+                    config = self.si_activities[0].CONFIG
+                else:
+                    config = 'NRCALL'  # special case for the IPR template which does not have a 'CONFIG' parameter
                 if config == 'NRCAALL' or config == 'NRCALL':
                     [apernames.append(f'NRCA{n}_FULL') for n in (1, 2, 3, 4)]
                 if config == 'NRCBALL' or config == 'NRCALL':
