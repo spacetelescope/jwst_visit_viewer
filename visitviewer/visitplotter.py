@@ -31,6 +31,9 @@ import jwst_gtvt.ephemeris_old2x as EPH
 #
 
 
+PROGRAMS_WITH_SEGMENT_GUIDING = [1410, 1141, 1143, 1148, 1150, 1151, 1153, 1158,  # flight programs, not yet a complete list
+                                  710,  741,  743]  # rehearsal programs
+
 
 def get_image_cache_dir():
     cache_dir = os.path.join(os.path.dirname(__file__), "image_cache")
@@ -156,10 +159,15 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     # Compute expected V3PA
     v3pa_at_gs = visit.slew.GSPA + (0 if visit._no_gspa_yoffset else fgs_aperture.V3IdlYAngle)
 
+    guidemode = slew.GUIDEMODE
+    if guidemode=='COARSE':
+        gslabel = "\n'pseudo guide star'\n(slew coordinates\n for Coarse pointing)"
+    else:
+        gslabel = "\nguide star"
 
     plt.scatter(visit.slew.GSRA, visit.slew.GSDEC,  s=200, edgecolor=gscolor, facecolor='none',
             transform=ax.get_transform('icrs'))
-    plt.text(visit.slew.GSRA, visit.slew.GSDEC,"\nguide star",
+    plt.text(visit.slew.GSRA, visit.slew.GSDEC, gslabel,
              transform=ax.get_transform('icrs'),
              horizontalalignment='left', verticalalignment='top', color=gscolor)
 
@@ -176,7 +184,6 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
 
 
     #-- Plot JWST apertures at that visit's orientation(s)
-    guidemode = slew.GUIDEMODE
 
     if guidemode=='COARSE':
         # we only have a science attitude
@@ -231,8 +238,17 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
             color='cyan', transform=ax.transAxes, horizontalalignment='right')
     plt.text(0.98, 0.02, f"Cyan = Science attitude",
             color='cyan', transform=ax.transAxes, horizontalalignment='right')
-    plt.text(0.38, 0.02, f"V1 axis at {v1_ra:.3f}, {v1_dec:.3f}\nV3PA={v3pa_at_gs:.3f} at GS, {v3pa_at_v1:.3f} at V1 axis",
+    plt.text(0.36, 0.02, f"V1 axis at {v1_ra:.3f}, {v1_dec:.3f}\nV3PA={v3pa_at_gs:.3f} at GS, {v3pa_at_v1:.3f} at V1 axis",
             color='white', transform=ax.transAxes)
+
+    apt_program_id = int(os.path.basename(visit.filename)[1:6])
+    if verbose:
+        print(f"APT program: {apt_program_id}")
+    if apt_program_id in PROGRAMS_WITH_SEGMENT_GUIDING:
+        plt.text(0.02, 0.125, f"Segment guiding may be used in this program\nGuide star coordinates may be offset from true location!",
+            color=gscolor, transform=ax.transAxes)
+
+
 
     if visit._no_gspa_yoffset:
         plt.text(0.00, -0.035,
@@ -591,7 +607,7 @@ def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=
                                              **r2_gridspec_kw)
 
     # Now make the plots, via the functions defined above
-    plot_visit_fov(visit, subplotspec=gs_outer[0], use_dss=use_dss)
+    plot_visit_fov(visit, subplotspec=gs_outer[0], use_dss=use_dss, verbose=verbose)
     show_field_of_regard_ecliptic(visit, subplotspec=gs_r[1, 0])
     show_field_of_regard_ra_dec(visit, subplotspec=gs_r[1, 1])
     show_pitch_roll(visit, gs_r2[2, 0], gs_r2[3, 0])
