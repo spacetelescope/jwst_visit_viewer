@@ -202,7 +202,11 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     # Plot the active apertures, more visibly
     for apername in visit.apertures_used():
         # look up aperture from that aperture name
-        aperture = SIAFS[apername[0:3]][apername]
+
+        aper_key = apername[0:4] if apername.startswith("M") else apername[0:3]  # NRC, NRS, NIS, FGS, or MIRI
+
+        aperture = SIAFS[aper_key][apername]
+
         # plot at the correct attitude
         aperture.set_attitude_matrix(attmatsci)
         aperture.plot(frame='sky', transform=ax.get_transform('icrs'), color='cyan', fill=True, fill_alpha=0.2)
@@ -223,7 +227,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
             verticalalignment='top')
     plt.text(0.02, 0.05, f"Guide star at {visit.slew.GSRA:.7f}, {visit.slew.GSDEC:.7f}, GSPA={visit.slew.GSPA}\nGuide mode = {guidemode}{guide_det_info}",
             color=gscolor, transform=ax.transAxes)
-    plt.text(0.98, 0.05, f"Shaded detectors are used\n in this observation",
+    plt.text(0.98, 0.05, f"Shaded apertures are used\n in this observation",
             color='cyan', transform=ax.transAxes, horizontalalignment='right')
     plt.text(0.98, 0.02, f"Cyan = Science attitude",
             color='cyan', transform=ax.transAxes, horizontalalignment='right')

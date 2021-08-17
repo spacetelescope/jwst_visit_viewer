@@ -248,16 +248,23 @@ class VisitFileContents(object):
         Return list of SIAF aperture names
         """
         apernames = []
+        if self.verbose: print(activity.scriptname)
         if activity.scriptname.startswith("NRC"):
             if activity.scriptname != 'NRCSUBMAIN':
                 # NIRCam full-frame readouts, one or both modules
-                if activity.scriptname != 'NRCIPRMAIN':
-                    config = self.si_activities[0].CONFIG
-                else:
+                if activity.scriptname == 'NRCIPRMAIN':
                     config = 'NRCALL'  # special case for the IPR template which does not have a 'CONFIG' parameter
-                if config == 'NRCAALL' or config == 'NRCALL':
+                elif activity.scriptname == 'NRCPILMAIN' :
+                    config = None  # This moves the PIL but does not take images
+                elif activity.scriptname == 'NRCTAMAIN' :
+                    config = None  # This performs TA, but we can ignore that and read the apertures from some later NRCMAIN call
+                else:
+                    config = activity.CONFIG
+
+                if self.verbose: print(f"Activity: {activity.scriptname}\tConfig: {config}")
+                if config == 'NRCAALL' or config == 'NRCALL' or config == 'NRCASHORT':
                     [apernames.append(f'NRCA{n}_FULL') for n in (1, 2, 3, 4)]
-                if config == 'NRCBALL' or config == 'NRCALL':
+                if config == 'NRCBALL' or config == 'NRCALL' or config == 'NRCBSHORT':
                     [apernames.append(f'NRCB{n}_FULL') for n in (1, 2, 3, 4)]
             else:
                 # NRCSUBMAIN configures NIRCam subarray readouts
