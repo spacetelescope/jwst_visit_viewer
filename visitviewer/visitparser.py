@@ -188,7 +188,7 @@ class VisitFileContents(object):
 
     """
 
-    def __init__(self, filename, no_gspa_yoffset=False, **kwargs):
+    def __init__(self, filename, no_gspa_yoffset=False, verbose=True, **kwargs):
 
         # Find the basics
         self.filename = filename
@@ -225,6 +225,8 @@ class VisitFileContents(object):
         # PPS 14.14.1 and earlier do not apply this offset, but later versions more correctly do so.
         # This affects the inferred attitude matrix.
         self._no_gspa_yoffset = no_gspa_yoffset
+
+        self.verbose = verbose
 
     def _find_statements(self, name):
         """ find all matching statements, return as list"""

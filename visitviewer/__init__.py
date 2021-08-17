@@ -20,7 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 def view(visitfilename, verbose=False, save=False, **kwargs):
     """top-level interface for visit quick view"""
-    visit = visitparser.VisitFileContents(visitfilename, **kwargs)
+    visit = visitparser.VisitFileContents(visitfilename, verbose=verbose, **kwargs)
     visitplotter.multi_plot(visit, save=save, verbose=verbose, **kwargs)
 
 def multi_view(filenamelist, output_dir=None, **kwargs):
@@ -46,16 +46,17 @@ def main():
     parser.add_argument('-m', '--multipage', action='store_true', help='If running on multiple input files, generate one multi-page PDF instead of separate PDFs')
     parser.add_argument('-n', '--no_gspa_yoffset', action='store_true', help='Do not apply FGS Yics angle offset to GSPA parameter. Use this for consistency with PPS version 14.14.1 and earlier (as used in LRE3, LRE4)')
     parser.add_argument('-o', '--output_dir',  help='Output PDF to this directory (rather than current working dir)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Be more verbose for debugging')
     args = parser.parse_args()
 
     if args.multipage and len(args.filename) > 1:
         # Generate one multi page PDF output
-        multi_view(args.filename, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir)
+        multi_view(args.filename, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir, verbose=args.verbose)
 
     else:
         # Generate a separate PDF per each input
         for filename in args.filename:
-            view(filename, save=True, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir)
+            view(filename, save=True, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir, verbose=args.verbose)
 
 if __name__ == '__main__':
     main()
