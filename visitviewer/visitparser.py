@@ -57,6 +57,7 @@ class SlewOrActStatement(Statement):
         self.group = group
         self.sequence = sequence
         self.activity = int(self.args[0], 16)  # note, these are base 16 hex numbers
+        self.scriptname = self.args[1]
 
         for param in self.args[2:]:
             if '=' in param:
@@ -83,8 +84,14 @@ class SlewStatement(SlewOrActStatement):
         if not hasattr(self, "GUIDEMODE"):
             self.GUIDEMODE = 'FINEGUIDE'
 
+        # some slew statements are not actually slews!
+        self._is_no_slew = self.scriptname == 'SCNOSLEWMAIN'
+
     def __repr__(self):
-        return "Slew  {}: for {} on GS at ({}, {}) with GSPA={}".format(self.gsa, self.GUIDEMODE, self.GSRA, self.GSDEC,
+        if self._is_no_slew:
+            return f"Slew {self.gsa}: SCNOSLEWMAIN"
+        else:
+            return "Slew {}: for {} on GS at ({}, {}) with GSPA={}".format(self.gsa, self.GUIDEMODE, self.GSRA, self.GSDEC,
                                                                         self.GSPA)
 
 
@@ -93,7 +100,6 @@ class ActivityStatement(SlewOrActStatement):
 
     def __init__(self, cmdstring, *args, **kwargs):
         super().__init__(cmdstring, *args, **kwargs)
-        self.scriptname = self.args[1]
 
     def __repr__(self):
         return "Activity {}:  {}".format(self.gsa, self.describe())
@@ -189,6 +195,7 @@ class VisitFileContents(object):
     """
 
     def __init__(self, filename, no_gspa_yoffset=False, verbose=True, **kwargs):
+        if verbose: print(f"Parsing {filename}")
 
         # Find the basics
         self.filename = filename

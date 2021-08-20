@@ -606,11 +606,21 @@ def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=
     gs_r2 = gridspec.GridSpecFromSubplotSpec(5, 1, subplot_spec=gs_outer[1],
                                              **r2_gridspec_kw)
 
-    # Now make the plots, via the functions defined above
-    plot_visit_fov(visit, subplotspec=gs_outer[0], use_dss=use_dss, verbose=verbose)
-    show_field_of_regard_ecliptic(visit, subplotspec=gs_r[1, 0])
-    show_field_of_regard_ra_dec(visit, subplotspec=gs_r[1, 1])
-    show_pitch_roll(visit, gs_r2[2, 0], gs_r2[3, 0])
+
+    # handle edge case: visit with no slew
+    if visit.slew._is_no_slew:
+        plt.text(0.5, 0.5, f"Unpointed visit! No slew defined\n(OSS SCNOSLEWMAIN)\nCannot plot coordinates or field of view meaningfully, sorry!",
+             color='red',
+             fontsize=15, horizontalalignment='center', fontweight='bold',
+             transform=fig.transFigure)
+
+
+    else:
+        # Now make the plots, via the functions defined above
+        plot_visit_fov(visit, subplotspec=gs_outer[0], use_dss=use_dss, verbose=verbose)
+        show_field_of_regard_ecliptic(visit, subplotspec=gs_r[1, 0])
+        show_field_of_regard_ra_dec(visit, subplotspec=gs_r[1, 1])
+        show_pitch_roll(visit, gs_r2[2, 0], gs_r2[3, 0])
 
     # Annotate labels
     plt.text(0.9, 0.05, f"Visit times EARLY =  {visit.time_early} UTC\n"
