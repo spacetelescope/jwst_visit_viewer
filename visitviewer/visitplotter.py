@@ -249,7 +249,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     if verbose:
         print(f"APT program: {apt_program_id}")
     if apt_program_id in PROGRAMS_WITH_SEGMENT_GUIDING:
-        plt.text(0.02, 0.125, f"Segment guiding may be used in this program\nGuide star coordinates may be offset from true location!",
+        plt.text(0.02, 0.125, f"Segment guiding may be used in this program\nThe guide star indicated may be a segment PSF offset from the star location",
             color=gscolor, transform=ax.transAxes)
 
 
