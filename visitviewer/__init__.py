@@ -19,11 +19,14 @@ from .visitparser import VisitFileContents
 from matplotlib.backends.backend_pdf import PdfPages
 
 def view(visitfilename, verbose=False, save=False, **kwargs):
-    """top-level interface for visit quick view"""
+    """top-level interface function for visit quick view"""
     visit = visitparser.VisitFileContents(visitfilename, verbose=verbose, **kwargs)
     visitplotter.multi_plot(visit, save=save, verbose=verbose, **kwargs)
 
 def multi_view(filenamelist, output_dir=None, **kwargs):
+    """top-level function for plotting many visits into one PDF as pages"""
+    if verbose:
+        print("Plotting many visits into one PDF")
     filenamelist.sort()
     visit_ids = [os.path.splitext(os.path.basename(f))[0] for f in filenamelist]
     outname = f"{visit_ids[0]}_to_{visit_ids[-1]}_view.pdf"
@@ -36,6 +39,16 @@ def multi_view(filenamelist, output_dir=None, **kwargs):
     print(f"Output saved to {outname}")
 
 
+def mosaic_view(filenamelist, verbose=False, save=True, **kwargs):
+    """top-level function for plotting many visits as one mosaic"""
+    if verbose:
+        print("Plotting many visits as one mosaic")
+    filenamelist.sort()
+    visitlist = [visitparser.VisitFileContents(visitfilename, verbose=verbose, **kwargs)
+                 for visitfilename in filenamelist]
+    visitplotter.mosaic_plot(visitlist, verbose=verbose, save=save, **kwargs)
+
+
 def main():
     """ Main function for command line arguments """
     parser = argparse.ArgumentParser(
@@ -44,12 +57,16 @@ def main():
     parser.add_argument('filename', metavar='filename', type=str, help='Filename of visit file, or filenames for multiple', nargs='+')
     parser.add_argument('-d', '--dss', action='store_true', help='Use DSS instead of 2MASS')
     parser.add_argument('-m', '--multipage', action='store_true', help='If running on multiple input files, generate one multi-page PDF instead of separate PDFs')
+    parser.add_argument('--mosaic', action='store_true', help='If running on multiple input files, plot them all together to show tiles of a mosaic')
     parser.add_argument('-n', '--no_gspa_yoffset', action='store_true', help='Do not apply FGS Yics angle offset to GSPA parameter. Use this for consistency with PPS version 14.14.1 and earlier (as used in LRE3, LRE4)')
     parser.add_argument('-o', '--output_dir',  help='Output PDF to this directory (rather than current working dir)')
     parser.add_argument('-v', '--verbose', action='store_true', help='Be more verbose for debugging')
     args = parser.parse_args()
 
-    if args.multipage and len(args.filename) > 1:
+    if args.mosaic and len(args.filename) > 1:
+        mosaic_view(args.filename, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir,
+                   verbose=args.verbose, save=True)
+    elif args.multipage and len(args.filename) > 1:
         # Generate one multi page PDF output
         multi_view(args.filename, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir, verbose=args.verbose)
 

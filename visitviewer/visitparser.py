@@ -122,7 +122,16 @@ class ActivityStatement(SlewOrActStatement):
                 description = "{s.scriptname}  NRC" + mod + ", {s.FILTSHORT" + mod + "}+{s.PUPILSHORT" + mod + \
                               "}, Readout={s.NGROUPS:.0f} groups, {s.NINTS:.0f} ints"
         elif self.scriptname == 'SCSAMMAIN':
-            description = """SCSAMMAIN  dx={s.DELTAX}, dy={s.DELTAY}, dpa={s.DELTAPA}"""
+            # SAMs can be set via various possible sets of parameters
+            if hasattr(self, 'DELTAX'):
+                description = """SCSAMMAIN  dx={s.DELTAX}, dy={s.DELTAY}, dpa={s.DELTAPA}"""
+            elif hasattr(self, 'FGS1DELTAX'):
+                description = """SCSAMMAIN  FGS1_deltax={s.FGS1DELTAX}, FGS1_dy={s.FGS1DELTAY}, dpa={s.FGS1DELTAPA}"""
+            else:
+                # to be improved if we encounter any other formats
+                description = """SCSAMMAIN"""
+
+
         elif self.scriptname == 'NRCSUBMAIN':
             description = """NRCSUBMAIN   subarray={s.SUBARRAY}"""
         else:
@@ -375,7 +384,7 @@ class VisitFileContents(object):
                 raise RuntimeError("WFSC VISIT BUT NO AUX STATEMENT FOUND!")
             # Check for presence of AUX statement
 
-    def get_attitude_matrix(self, step='slew'):
+    def get_attitude_matrix(self, step='slew', fgs_delta_from_sam=None):
         """Return attitude matrix for 'id' or 'science' attitudes in a visit
 
         For reference, see https://innerspace.stsci.edu/display/OPGS/OSS+8.4+%28Forms+7.2%29+Pointing+OPGS+Rules#OSS8.4(Forms7.2)PointingOPGSRules-Slew
@@ -384,6 +393,14 @@ class VisitFileContents(object):
         provided to both. For convenience we pull these out from the SLEW statement, at least for now.
 
         TODO: improve/enhance for more complicated visits with multiple guide stars, multiple slews, etc?
+
+        Parameters
+        -----------
+        step : basestring
+            Whether to read from slew statement (e.g. slew to ID attitude), or from science attitude
+        fgs_delta_from_sam : None, or 2-tuple of floats
+            Offset to apply in the FGS frame, as from an offset Small Angle Maneuver via SCSAMMAIN.
+            Interpreted as (FGS1DELTAX, FGS1DELTAY) offset provided in FGS Ideal coordinates in units of arcseconds
 
         """
         visit = self
@@ -418,6 +435,15 @@ class VisitFileContents(object):
             raise ValueError("step must be one of {slew, id, sci}.")
 
         fgs_aperture = self.get_guider_aperture()
+
+        if fgs_delta_from_sam is not None:
+            # Offset the guide star for a SAM. We interpret this as changing which location in the FGS frame
+            # should be pointed toward the guide star or other target ra,dec
+            if self.verbose:
+                print(f"Applying SAM offset {fgs_delta_from_sam} in arcsec, FGS Ideal frame")
+            x_idl = x_idl + fgs_delta_from_sam[0]
+            y_idl = y_idl + fgs_delta_from_sam[1]
+
 
         # Convert from FGS1/2 Ideal coords in arcseconds to telescope FOV coordinates in arcseconds
         xtel, ytel = fgs_aperture.idl_to_tel(x_idl, y_idl)

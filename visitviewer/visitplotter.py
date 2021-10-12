@@ -3,6 +3,7 @@ import platform
 import subprocess
 import warnings
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -55,7 +56,7 @@ SIAFS = load_all_siafs()
 
 ##--- Functions for plotting the visit field of VIEW
 
-def retrieve_2mass_image(visit, ra=None, dec=None, verbose=True, redownload=False, filter='K'):
+def retrieve_2mass_image(visit, ra=None, dec=None, verbose=True, redownload=False, filter='K', fov=0.35):
     """Obtain from Aladin a 2MASS image for the pointing location of a JWST visit
 
     Uses HIPS2FITS service; see http://alasky.u-strasbg.fr/hips-image-services/hips2fits
@@ -83,11 +84,14 @@ def retrieve_2mass_image(visit, ra=None, dec=None, verbose=True, redownload=Fals
     hips_catalog = f'CDS/P/2MASS/{filter}'  # also try 2MASS/color
     width = 1024
     height = 1024
-    fov = 0.35
 
     visitname = os.path.splitext(os.path.basename(visit.filename))[0]
 
-    img_fn = os.path.join(get_image_cache_dir(),  f'img_2mass_{filter}_{visitname}.fits')
+    if fov!= 0.35:
+        # if a non-default FOV is used, save that specially
+        img_fn = os.path.join(get_image_cache_dir(),  f'img_2mass_{filter}_{visitname}_fov{fov}.fits')
+    else:
+        img_fn = os.path.join(get_image_cache_dir(),  f'img_2mass_{filter}_{visitname}.fits')
 
     if not os.path.exists(img_fn) or redownload:
 
@@ -260,6 +264,118 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     ax.set_ylim(*ylim)
 
     return ax
+
+
+def plot_mosaic_pointings_fov(visitlist, center_on_visit=0, subplotspec=None, verbose=False, use_dss=False, title=None,
+                              crop_for_no12=False):
+    """Plot multiple visits together in one FOV as a mosaic
+
+    CAUTION: Only tested so far on an example mock OTE-01 visit set from Normal Ops 12,
+    which is a special case for NIRCam mosaic in coarse point.
+    This is not (yet..?) a generalized mosaic viewer! YMMV.
+
+    """
+    # Use one visit, by default the first visit in the list, to set up the plot FOV and image
+    visit = visitlist[center_on_visit]
+
+    fgs_aperture_name = visit.get_guider_aperture(return_name=True)
+    fgs_aperture = SIAFS['FGS'].apertures[fgs_aperture_name]
+    attmat = visit.get_attitude_matrix(step='sci')
+    fgs_aperture.set_attitude_matrix(attmat)
+    mcf_ra, mcf_dec = fgs_aperture.tel_to_sky(0, -468)  # RA, Dec of master chief ray location (between NIRCam A+B)
+
+    # Retrieve image
+    if use_dss:
+        img_hdu = retrieve_dss_image(visit, ra=mcf_ra, dec=mcf_dec, verbose=verbose, fov=0.5)
+    else:
+        img_hdu = retrieve_2mass_image(visit, ra=mcf_ra, dec=mcf_dec, verbose=verbose, fov=0.5)
+
+    wcs = astropy.wcs.WCS(img_hdu[0].header)
+
+    # -- Setup plot and axes
+    if subplotspec is None:
+        plt.figure(figsize=(16, 9))
+        ax = plt.subplot(projection=wcs)
+    else:
+        ax = plt.subplot(subplotspec, projection=wcs)
+
+    # -- Display the 2MASS image
+    norm = astropy.visualization.ImageNormalize(img_hdu[0].data,
+                                                interval=astropy.visualization.PercentileInterval(99.99),
+                                                stretch=astropy.visualization.AsinhStretch(a=0.001))
+    plt.imshow(img_hdu[0].data, cmap='magma', norm=norm, origin='lower',
+               zorder=-50)  # negative zorder to be below pysiaf aperture fill zorder
+
+    # use colormap to shade each visit distinctly:
+    cmap = matplotlib.cm.cool
+
+    for i, visit in enumerate(visitlist):
+
+        slew = visit.slew
+        # Compute expected V3PA
+        v3pa_at_gs = visit.slew.GSPA + (0 if visit._no_gspa_yoffset else fgs_aperture.V3IdlYAngle)
+
+        if slew.GUIDEMODE != 'COARSE':
+            raise RuntimeError("We only expect coarse point for OTE-01 mosaic tiles")
+
+        # we only have a science attitude
+        attmatsci = visit.get_attitude_matrix(step='slew')
+
+        gsoffset = np.zeros(2)  # start with 0,0 offsets initially at start of visit
+
+        centers = []
+
+        for iact, act in enumerate(visit.activities):
+
+            if act.scriptname == 'NRCMAIN':
+                # Draw NIRCam apertures
+                for apername in visit.apertures_used():
+
+                    if apername.startswith('NRS'):
+                        continue  # ignore parallel nirspec darks from NO-12
+
+                    # look up aperture from that aperture name
+
+                    aper_key = apername[0:4] if apername.startswith("M") else apername[
+                                                                              0:3]  # NRC, NRS, NIS, FGS, or MIRI
+
+                    aperture = SIAFS[aper_key][apername]
+
+                    col = cmap(i / len(visitlist))
+                    # plot at the correct attitude
+                    aperture.set_attitude_matrix(attmatsci)
+                    centers.append(aperture.sci_to_sky(1024, 1024))
+
+                    aperture.plot(frame='sky', transform=ax.get_transform('icrs'),
+                                  color=col, fill_color=col, fill=True, fill_alpha=0.2)
+
+                    if aperture.AperName == 'NRCA3_FULL':
+                        c0, c1 = aperture.det_to_sky(1024, 1024)
+                        plt.text(c0, c1, f"v{i:03d}a{iact:1d}",
+                                 color='white', transform=ax.get_transform('icrs'), horizontalalignment='left')
+            elif act.scriptname == 'SCSAMMAIN':
+                gsoffset[0] -= act.FGS1DELTAX
+                gsoffset[1] -= act.FGS1DELTAY
+
+                attmatsci = visit.get_attitude_matrix(step='slew', fgs_delta_from_sam=gsoffset)
+
+    if title:
+        plt.title(f"Visit file pointings for {title}")
+
+    if crop_for_no12:
+        # Hack: hard-coded zoom for NO-12 OTE-01 test
+        ax.set_xlim(424, 1024)
+        ax.set_ylim(150, 750)
+
+    plt.text(0.01, 0.01, "Labels show visit:activity in each NRCA3 pointing", color='white',
+             transform=ax.transAxes)
+
+
+def plot_gs_id_references(activity_statement):
+    """ Plot reference stars used for guide star ID
+    To do so we have to convert from detector coordinates to sky coordinates
+    """
+
 
 ##--- Functions for plotting the visit field of REGARD
 
@@ -590,6 +706,9 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
                  transform=plt.gcf().transFigure)
 
 
+# Functions for combining multiple plot panels into one page:
+
+
 def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=False, output_dir=None):
     """ Main top-level function for visitviewer"""
     fig = plt.figure(figsize=(16, 9))
@@ -643,3 +762,53 @@ def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=
 
         if platform.system()=='Darwin':
             subprocess.run(["open", outname])
+
+
+
+def mosaic_plot(visitlist, verbose=False, save=False, use_dss=False, no_gspa_yoffset=False, output_dir=None):
+    """ Main top-level function for visitviewer, special version for mosaics"""
+    fig = plt.figure(figsize=(16, 9))
+
+    # Set up a bunch of plot axes, complicatedly via nested grids
+    # (this could be simplified but I'm adapting from other existing code...)
+    gs_outer = plt.GridSpec(1, 2, width_ratios=[9,7])
+    gs_outer.update(bottom=0.05, top=0.95, wspace=0.2, left=0.04, right=0.98)
+
+    r_gridspec_kw = {'hspace': 0.2, 'wspace': 0.2, 'height_ratios': [0.3, 1, 1, 0.3], 'width_ratios': [1, 1.5]}
+    gs_r = gridspec.GridSpecFromSubplotSpec(4, 2, subplot_spec=gs_outer[1],
+                                            **r_gridspec_kw)
+    r2_gridspec_kw = {'hspace': 0.05, 'wspace': 0.2, 'height_ratios': [0.3, .7, 0.3, 0.3, 0.4]}
+    gs_r2 = gridspec.GridSpecFromSubplotSpec(5, 1, subplot_spec=gs_outer[1],
+                                             **r2_gridspec_kw)
+
+    # Use the first visit as reference for field of regard and pitch/roll
+    visit=visitlist[0]
+
+    # Now make the plots, via the functions defined above
+    plot_mosaic_pointings_fov(visitlist, subplotspec=gs_outer[0], use_dss=use_dss, verbose=verbose)
+    show_field_of_regard_ecliptic(visit, subplotspec=gs_r[1, 0])
+    show_field_of_regard_ra_dec(visit, subplotspec=gs_r[1, 1])
+    show_pitch_roll(visit, gs_r2[2, 0], gs_r2[3, 0])
+
+    # Annotate labels
+    plt.text(0.9, 0.05, f"Visit times EARLY =  {visit.time_early} UTC\n"
+                        f"            LATE =   {visit.time_late} UTC",
+             #                    f"            CUTOFF = {visit.time_cutoff}",
+             fontsize=12, horizontalalignment='right', fontweight='bold',
+             transform=fig.transFigure)
+
+    plt.text(0.55, 0.95, visit.short_summary(),
+             fontsize = 12, horizontalalignment = 'left', fontweight = 'bold',
+             verticalalignment='top',
+             transform = fig.transFigure)
+
+    if save:
+        outname = f"{visit.visitid}_mosaic_view.pdf"
+        if output_dir is not None:
+            outname = os.path.join(output_dir, outname)
+        plt.savefig(outname)
+        print(f"File saved to {outname}")
+
+        if platform.system()=='Darwin':
+            subprocess.run(["open", outname])
+        return outname
