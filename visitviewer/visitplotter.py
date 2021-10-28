@@ -33,7 +33,8 @@ import jwst_gtvt.ephemeris_old2x as EPH
 
 
 PROGRAMS_WITH_SEGMENT_GUIDING = [1410, 1141, 1143, 1148, 1150, 1151, 1153, 1158,  # flight programs, not yet a complete list
-                                  710,  741,  743]  # rehearsal programs
+                                  710,  741,  743,  # rehearsal programs
+                                  646]  # WF Guiding rehearsal program
 
 
 def get_image_cache_dir():
@@ -354,8 +355,8 @@ def plot_mosaic_pointings_fov(visitlist, center_on_visit=0, subplotspec=None, ve
                         plt.text(c0, c1, f"v{i:03d}a{iact:1d}",
                                  color='white', transform=ax.get_transform('icrs'), horizontalalignment='left')
             elif act.scriptname == 'SCSAMMAIN':
-                gsoffset[0] -= act.FGS1DELTAX
-                gsoffset[1] -= act.FGS1DELTAY
+                gsoffset[0] += act.FGS1DELTAX
+                gsoffset[1] += act.FGS1DELTAY
 
                 attmatsci = visit.get_attitude_matrix(step='slew', fgs_delta_from_sam=gsoffset)
 
@@ -701,7 +702,7 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
                        fontweight='bold', fontsize=9, color='C0')
 
     if np.any( np.abs(vehicle_roll) > max_allowed_roll):
-        plt.text(0.98, 0.1, 'WARNING! Vehicle roll is outside of limits at some times!', color='red',
+        plt.text(0.98, 0.1, 'WARNING! Vehicle roll may be outside of limit at some times!\n(Check this with more official software and latest ephemeris)', color='red',
                  fontweight='bold', horizontalalignment='right',fontsize=15,
                  transform=plt.gcf().transFigure)
 

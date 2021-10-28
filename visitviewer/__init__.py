@@ -23,7 +23,7 @@ def view(visitfilename, verbose=False, save=False, **kwargs):
     visit = visitparser.VisitFileContents(visitfilename, verbose=verbose, **kwargs)
     visitplotter.multi_plot(visit, save=save, verbose=verbose, **kwargs)
 
-def multi_view(filenamelist, output_dir=None, **kwargs):
+def multi_view(filenamelist, output_dir=None, verbose=False, **kwargs):
     """top-level function for plotting many visits into one PDF as pages"""
     if verbose:
         print("Plotting many visits into one PDF")
@@ -34,7 +34,7 @@ def multi_view(filenamelist, output_dir=None, **kwargs):
         outname = os.path.join(output_dir, outname)
     with PdfPages(outname) as pdf:
         for fn in filenamelist:
-            view(fn, **kwargs)
+            view(fn, verbose=verbose, **kwargs)
             pdf.savefig()
     print(f"Output saved to {outname}")
 
