@@ -130,6 +130,11 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     v1pv3c = coords.SkyCoord(v1pv3_ra, v1pv3_dec, unit='deg', frame='icrs')
     v3pa_at_v1 = v1c.position_angle(v1pv3c).deg
 
+    # Compute RA, Dec of the J frame axis
+    jframe_aperture = SIAFS['FGS'].apertures['J-FRAME']
+    jframe_aperture.set_attitude_matrix(attmat)
+    j_ra, j_dec = jframe_aperture.idl_to_sky(0,0)        # RA, Dec of V1 axis reference location
+
     if use_dss:
         img_hdu = retrieve_dss_image(visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
     else:
@@ -159,6 +164,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     #-- Mark guide star
     gscolor='yellow'
     v1color='white'
+    Jcolor = 'chartreuse'
 
     slew = visit.slew
     # Compute expected V3PA
@@ -176,11 +182,23 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
              transform=ax.get_transform('icrs'),
              horizontalalignment='left', verticalalignment='top', color=gscolor)
 
+    if v1_ra > j_ra:
+        v1_ha, j_ha = 'right', 'left'
+    else:
+        v1_ha, j_ha = 'left', 'right'
+
     plt.scatter([v1_ra], [v1_dec], marker='+', s=50, color=v1color,
             transform=ax.get_transform('icrs'))
     plt.text(v1_ra, v1_dec, "\nV1 axis",
              transform=ax.get_transform('icrs'), fontsize=10,
-             horizontalalignment='left', verticalalignment='top', color=v1color)
+             horizontalalignment=v1_ha, verticalalignment='top', color=v1color)
+
+    plt.scatter([j_ra], [j_dec], marker='*', s=50, color=Jcolor,
+            transform=ax.get_transform('icrs'))
+    plt.text(j_ra, j_dec, "\nJ axis",
+             transform=ax.get_transform('icrs'), fontsize=10,
+             horizontalalignment=j_ha, verticalalignment='top', color=Jcolor)
+
 
     # subsequent annotations can mess up the axes limits, so save here and restore later
     # this is a hacky workaround
