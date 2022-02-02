@@ -380,7 +380,7 @@ class VisitFileContents(object):
             act_by_num[s.gsa] = s
         if is_wfsc_visit:
             aux = [s for s in self.statements if s.name == 'AUX']
-            if len(aux) is 0:
+            if len(aux) == 0:
                 raise RuntimeError("WFSC VISIT BUT NO AUX STATEMENT FOUND!")
             # Check for presence of AUX statement
 

@@ -720,8 +720,9 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
                        fontweight='bold', fontsize=9, color='C0')
 
     if np.any( np.abs(vehicle_roll) > max_allowed_roll):
-        plt.text(0.98, 0.1, 'WARNING! Vehicle roll may be outside of limit at some times!\n(Check this with more official software and latest ephemeris)', color='red',
-                 fontweight='bold', horizontalalignment='right',fontsize=15,
+        plt.text(0.98, 0.1, 'WARNING! Vehicle roll may be outside of limit at some times?\n(IGNORE this warning; need to update with flight ephemeris)', color='red',
+                 #fontweight='bold', 
+                 horizontalalignment='right',fontsize=15,
                  transform=plt.gcf().transFigure)
 
 
