@@ -335,6 +335,9 @@ class VisitFileContents(object):
 
         return main_apertures
 
+    def uses_guiding(self):
+        return len(self.guide_activities) > 0
+
     def short_summary(self):
         """ Succinct summary of what's in this visit. Should be no more than 1-2 lines
 
@@ -384,7 +387,7 @@ class VisitFileContents(object):
                 raise RuntimeError("WFSC VISIT BUT NO AUX STATEMENT FOUND!")
             # Check for presence of AUX statement
 
-    def get_attitude_matrix(self, step='slew', fgs_delta_from_sam=None):
+    def get_attitude_matrix(self, step='slew', gscandidate=1, fgs_delta_from_sam=None):
         """Return attitude matrix for 'id' or 'science' attitudes in a visit
 
         For reference, see https://innerspace.stsci.edu/display/OPGS/OSS+8.4+%28Forms+7.2%29+Pointing+OPGS+Rules#OSS8.4(Forms7.2)PointingOPGSRules-Slew
@@ -401,36 +404,50 @@ class VisitFileContents(object):
         fgs_delta_from_sam : None, or 2-tuple of floats
             Offset to apply in the FGS frame, as from an offset Small Angle Maneuver via SCSAMMAIN.
             Interpreted as (FGS1DELTAX, FGS1DELTAY) offset provided in FGS Ideal coordinates in units of arcseconds
-
+        gscandidate: int
+            Which GS candidate to draw the informayion from. 1-based index
         """
         visit = self
 
+        indx = gscandidate-1
+
         # Read pointing information from SLEW or FGSMAIN statements in the visit
         if step == 'slew':
-            ra = visit.slew.GSRA
-            dec = visit.slew.GSDEC
-            pa = visit.slew.GSPA
-            x_idl = visit.slew.GSX
-            y_idl = visit.slew.GSY
+            ra = visit.slews[indx].GSRA
+            dec = visit.slews[indx].GSDEC
+            pa = visit.slews[indx].GSPA
+            x_idl = visit.slews[indx].GSX
+            y_idl = visit.slews[indx].GSY
         elif step == 'id':
-            # is this always the same as the slew?
-            ra = visit.slew.GSRA
-            dec = visit.slew.GSDEC
-            pa = visit.slew.GSPA
-            x_idl = visit.slew.GSX
-            y_idl = visit.slew.GSY
+            if not self.uses_guiding():
+                raise RuntimeError("This visit does not use guiding, therefore there is no Guide ID attitude.")
+            # is this always the same as the slews[indx]?
+            ra = visit.guide_activities[indx].GSRA
+            dec = visit.guide_activities[indx].GSDEC
+            pa = visit.guide_activities[indx].GSROLLID
+            x_idl = visit.guide_activities[indx].GSXID
+            y_idl = visit.guide_activities[indx].GSYID
         elif step == 'sci':
-            ra = visit.slew.GSRA
-            dec = visit.slew.GSDEC
-            try:
-                pa = visit.slew.GSPASCI
-                x_idl = visit.slew.GSXSCI
-                y_idl = visit.slew.GSYSCI
-            except AttributeError:
-                # Fall back to these if there is no science attitude provided?
-                pa = visit.slew.GSPA
-                x_idl = visit.slew.GSX
-                y_idl = visit.slew.GSY
+            if self.uses_guiding():
+                # Guided visit, therefore read science attitude from the FGSMAIN call
+                ra = visit.guide_activities[indx].GSRA
+                dec = visit.guide_activities[indx].GSDEC
+                try:
+                    pa = visit.guide_activities[indx].GSROLLSCI
+                    x_idl = visit.guide_activities[indx].GSXSCI
+                    y_idl = visit.guide_activities[indx].GSYSCI
+                except AttributeError:
+                    # Fall back to these if there is no science attitude provided?
+                    pa = visit.guide_activities[indx].GSROLLID
+                    x_idl = visit.guide_activities[indx].GSXID
+                    y_idl = visit.guide_activities[indx].GSYID
+            else:
+                # Unguided visit, therefore infer science attitude must be same as slew attitude.
+                ra = visit.slews[indx].GSRA
+                dec = visit.slews[indx].GSDEC
+                pa = visit.slews[indx].GSPA
+                x_idl = visit.slews[indx].GSX
+                y_idl = visit.slews[indx].GSY
         else:
             raise ValueError("step must be one of {slew, id, sci}.")
 

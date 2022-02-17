@@ -225,6 +225,22 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
         plt.text(0.02, 0.02, f"Yellow = ID attitude",
                 color=gscolor, transform=ax.transAxes, horizontalalignment='left')
 
+        # Try to plot the different possible GS reference stars
+        gs = visit.guide_activities[0]
+        ref1radec = fgs_aperture.idl_to_sky(gs.REF1X, gs.REF1Y)
+        ref2radec = fgs_aperture.idl_to_sky(gs.REF2X, gs.REF2Y)
+        plt.scatter(gs.GSRA, gs.GSDEC, marker='+', s=30, color=gscolor,
+                    transform=ax.get_transform('icrs'))
+        plt.scatter(*ref1radec, marker='+', s=50, color='orange',
+                    transform=ax.get_transform('icrs'))
+        plt.scatter(*ref2radec, marker='+', s=50, color='orange',
+                    transform=ax.get_transform('icrs'))
+        plt.text(*ref1radec, "GS References:  ",
+                 transform=ax.get_transform('icrs'),
+                 horizontalalignment='right', verticalalignment='center', color='orange')
+
+        #plot_gs_id_references(visit.s
+
     # Plot all apertures, faintly
     pysiaf.siaf.plot_main_apertures(frame='sky', darkbg=True,
                                attitude_matrix=attmatsci, transform=ax.get_transform('icrs'), alpha=0.4, fill=False)
@@ -267,7 +283,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     apt_program_id = int(os.path.basename(visit.filename)[1:6])
     if verbose:
         print(f"APT program: {apt_program_id}")
-    if apt_program_id in PROGRAMS_WITH_SEGMENT_GUIDING:
+    if apt_program_id in PROGRAMS_WITH_SEGMENT_GUIDING and visit.uses_guiding():
         plt.text(0.02, 0.125, f"Segment guiding may be used in this program\nThe guide star indicated may be a segment PSF offset from the star location",
             color=gscolor, transform=ax.transAxes)
 
