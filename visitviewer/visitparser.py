@@ -56,7 +56,7 @@ class SlewOrActStatement(Statement):
         super().__init__(cmdstring, verbose=verbose)
         self.group = group
         self.sequence = sequence
-        self.activity = int(self.args[0], 16)  # note, these are base 16 hex numbers
+        self.activity = int(self.args[0], 36)  # note, these are base 36 numbers; each digit counts 0 to 9 then A to Z
         self.scriptname = self.args[1]
 
         for param in self.args[2:]:
