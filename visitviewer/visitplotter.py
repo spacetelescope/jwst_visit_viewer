@@ -1,7 +1,6 @@
 import os
 import platform
 import subprocess
-import warnings
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -15,6 +14,7 @@ import astropy.units as u
 import pysiaf
 import jwst_gtvt.find_tgt_info
 import jwst_gtvt.ephemeris_old2x as EPH
+import copy
 
 
 # Visit plotting tools
@@ -110,8 +110,9 @@ def retrieve_2mass_image(visit, ra=None, dec=None, verbose=True, redownload=Fals
     return hdu
 
 
-def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
+def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center_visit=None):
     """Make a nice annotated plot of a visit FOV"""
+
 
     # let's center the plot on the master chief ray (MCF; between NIRCams) at the science attitude.
     # This works better than centering on the guide star.
@@ -122,6 +123,18 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     fgs_aperture.set_attitude_matrix(attmat)
     mcf_ra, mcf_dec = fgs_aperture.tel_to_sky(0,-468)   # RA, Dec of master chief ray location (between NIRCam A+B)
 
+    if center_visit is not None:
+        # Override default center coordinates using some other visit
+        print(f"Overriding plot center coordinates using {center_visit}")
+        print("Original", mcf_ra, mcf_dec)
+        from . import visitparser
+        center_visit_parsed = visitparser.VisitFileContents(center_visit)
+        center_fgs_aperture_name = center_visit_parsed.get_guider_aperture(return_name=True)
+        center_fgs_aperture = copy.deepcopy(SIAFS['FGS'].apertures[center_fgs_aperture_name])
+        center_attmat = center_visit_parsed.get_attitude_matrix(step='sci')
+        center_fgs_aperture.set_attitude_matrix(center_attmat)
+        mcf_ra, mcf_dec = center_fgs_aperture.tel_to_sky(0, -468)  # RA, Dec of master chief ray location (between NIRCam A+B)
+        print("Overridden", mcf_ra, mcf_dec)
 
     # Compute RA, Dec, PA of the V1 axis, for comparison to values in SciOps OP delivery report
     v1_ra, v1_dec = fgs_aperture.tel_to_sky(0,0)        # RA, Dec of V1 axis reference location
@@ -135,10 +148,11 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     jframe_aperture.set_attitude_matrix(attmat)
     j_ra, j_dec = jframe_aperture.idl_to_sky(0,0)        # RA, Dec of V1 axis reference location
 
+    image_visit = center_visit_parsed if center_visit else visit
     if use_dss:
-        img_hdu = retrieve_dss_image(visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
+        img_hdu = retrieve_dss_image(image_visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
     else:
-        img_hdu = retrieve_2mass_image(visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
+        img_hdu = retrieve_2mass_image(image_visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
 
     wcs = astropy.wcs.WCS(img_hdu[0].header)
 
@@ -187,6 +201,11 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
     else:
         v1_ha, j_ha = 'left', 'right'
 
+    # subsequent annotations can mess up the axes limits, so save here and restore later
+    # this is a hacky workaround
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+
     plt.scatter([v1_ra], [v1_dec], marker='+', s=50, color=v1color,
             transform=ax.get_transform('icrs'))
     plt.text(v1_ra, v1_dec, "\nV1 axis",
@@ -199,11 +218,6 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
              transform=ax.get_transform('icrs'), fontsize=10,
              horizontalalignment=j_ha, verticalalignment='top', color=Jcolor)
 
-
-    # subsequent annotations can mess up the axes limits, so save here and restore later
-    # this is a hacky workaround
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
 
 
     #-- Plot JWST apertures at that visit's orientation(s)
@@ -227,18 +241,77 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, ):
 
         # Try to plot the different possible GS reference stars
         gs = visit.guide_activities[0]
-        ref1radec = fgs_aperture.idl_to_sky(gs.REF1X, gs.REF1Y)
-        ref2radec = fgs_aperture.idl_to_sky(gs.REF2X, gs.REF2Y)
         plt.scatter(gs.GSRA, gs.GSDEC, marker='+', s=30, color=gscolor,
                     transform=ax.get_transform('icrs'))
-        plt.scatter(*ref1radec, marker='+', s=50, color='orange',
-                    transform=ax.get_transform('icrs'))
-        plt.scatter(*ref2radec, marker='+', s=50, color='orange',
-                    transform=ax.get_transform('icrs'))
-        plt.text(*ref1radec, "GS References:  ",
-                 transform=ax.get_transform('icrs'),
-                 horizontalalignment='right', verticalalignment='center', color='orange')
 
+       #  try:
+       #      ref1radec = fgs_aperture.idl_to_sky(gs.REF1X, gs.REF1Y)
+       #      plt.scatter(*ref1radec, marker='+', s=50, color='orange',
+       #              transform=ax.get_transform('icrs'))
+       # except AttributeError:
+       #      pass # Not all visits have a REF1
+       #
+       #  try:
+       #      ref2radec = fgs_aperture.idl_to_sky(gs.REF2X, gs.REF2Y)
+       #      plt.scatter(*ref2radec, marker='+', s=50, color='orange',
+       #                  transform=ax.get_transform('icrs'))
+       #  except AttributeError:
+       #      pass # Not all visits have a REF1
+
+        # # Let's do some sanity checks
+        # try:
+        #     # TODO generalize this to check up to 10 reference stars
+        #     differences = ((np.sqrt((gs.REF1X-gs.REF2X)**2 + (gs.REF1Y - gs.REF2Y)**2 ), "GS REF1 and REF2"),
+        #                    (np.sqrt((gs.GSXID-gs.REF2X)**2 + (gs.GSYID - gs.REF2Y)**2 ), "GUIDE STAR and REF2"),
+        #                    (np.sqrt((gs.GSXID - gs.REF1X) ** 2 + (gs.GSYID - gs.REF1Y) ** 2), "GUIDE STAR and REF2"),)
+        #     for gs_ref_separation, gserrlabel in differences:
+        #         if gs_ref_separation< 2:
+        #             plt.text(gs.GSRA, gs.GSDEC, f"WARNING: {gserrlabel} ARE\n LESS THAN 2 ARCSEC APART\nMAY NOT BE WELL SEPARATED ENOUGH",
+        #                      color='red', fontweight='bold', transform=ax.get_transform('icrs'),fontsize=20, zorder=100,
+        #                      horizontalalignment='center')
+        # except AttributeError:
+        #     pass # Not all visits have a REF1
+
+        errmsgcount=0
+        for ref_id in range(1,10):
+            if hasattr(gs, f'REF{ref_id}X'):
+                refx = getattr(gs, f'REF{ref_id}X')
+                refy = getattr(gs, f'REF{ref_id}Y')
+
+                refradec = fgs_aperture.idl_to_sky(refx, refy)
+                # Overplot
+                plt.scatter(*refradec, marker='+', s=50, color='orange',
+                            transform=ax.get_transform('icrs'))
+
+                if ref_id==1:
+                    plt.text(*refradec, "GS References:  ",
+                             transform=ax.get_transform('icrs'),
+                             horizontalalignment='right', verticalalignment='center', color='orange')
+
+                # Let's do some sanity checks
+                # Is this reference star distinct from the guide star?
+                gs_ref_separation = np.sqrt((gs.GSXID-refx)**2 + (gs.GSYID - refy)**2 )
+                if gs_ref_separation < 2:
+                    errmsg =f"WARNING: GUIDE STAR AND REF {ref_id} ARE\n LESS THAN 2 ARCSEC APART\nMAY NOT BE WELL SEPARATED ENOUGH"
+                    print(errmsg)
+                    plt.text(gs.GSRA, gs.GSDEC, errmsgcount*3*"\n" + errmsg,
+                             color='red', fontweight='bold', transform=ax.get_transform('icrs'), fontsize=20, zorder=100,
+                             horizontalalignment='center')
+                    errmsgcount += 1
+                # Is this reference star distinct from the other references?
+                for other_ref_id in range(1,ref_id):
+                    other_refx = getattr(gs, f'REF{other_ref_id}X')
+                    other_refy = getattr(gs, f'REF{other_ref_id}Y')
+                    ref_ref_separation = np.sqrt((other_refx-refx)**2 + (other_refy - refy)**2 )
+                    if ref_ref_separation < 2:
+                        refradec = fgs_aperture.idl_to_sky(refx, refy)
+                        errmsg = f"WARNING: GUIDE STAR REF {ref_id} AND REF {other_ref_id} ARE\n LESS THAN 2 ARCSEC APART\nMAY NOT BE WELL SEPARATED ENOUGH"
+                        print(errmsg)
+                        errmsgcount += 1
+                        plt.text(*refradec, (errmsgcount*10*"\n") + errmsg,
+                             color='red', fontweight='bold', transform=ax.get_transform('icrs'), fontsize=20, zorder=100,
+                             horizontalalignment='center')
+                print(errmsgcount)
         #plot_gs_id_references(visit.s
 
     # Plot all apertures, faintly
@@ -745,7 +818,7 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
 # Functions for combining multiple plot panels into one page:
 
 
-def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=False, output_dir=None):
+def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=False, output_dir=None, center_visit=None):
     """ Main top-level function for visitviewer"""
     fig = plt.figure(figsize=(16, 9))
 
@@ -772,7 +845,7 @@ def multi_plot(visit, verbose=False, save=False, use_dss=False, no_gspa_yoffset=
 
     else:
         # Now make the plots, via the functions defined above
-        plot_visit_fov(visit, subplotspec=gs_outer[0], use_dss=use_dss, verbose=verbose)
+        plot_visit_fov(visit, subplotspec=gs_outer[0], use_dss=use_dss, verbose=verbose, center_visit=center_visit)
         show_field_of_regard_ecliptic(visit, subplotspec=gs_r[1, 0])
         show_field_of_regard_ra_dec(visit, subplotspec=gs_r[1, 1])
         show_pitch_roll(visit, gs_r2[2, 0], gs_r2[3, 0])

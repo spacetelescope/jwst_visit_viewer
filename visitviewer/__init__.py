@@ -59,6 +59,7 @@ def main():
     parser.add_argument('-m', '--multipage', action='store_true', help='If running on multiple input files, generate one multi-page PDF instead of separate PDFs')
     parser.add_argument('--mosaic', action='store_true', help='If running on multiple input files, plot them all together to show tiles of a mosaic')
     parser.add_argument('-n', '--no_gspa_yoffset', action='store_true', help='Do not apply FGS Yics angle offset to GSPA parameter. Use this for consistency with PPS version 14.14.1 and earlier (as used in LRE3, LRE4)')
+    parser.add_argument('-c', '--center',  help='Center plot based on some other visit, instead of this one. Use this to get consistent plots for a set of related visits')
     parser.add_argument('-o', '--output_dir',  help='Output PDF to this directory (rather than current working dir)')
     parser.add_argument('-v', '--verbose', action='store_true', help='Be more verbose for debugging')
     args = parser.parse_args()
@@ -73,7 +74,8 @@ def main():
     else:
         # Generate a separate PDF per each input
         for filename in args.filename:
-            view(filename, save=True, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir, verbose=args.verbose)
+            view(filename, save=True, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir, verbose=args.verbose,
+                 center_visit=args.center)
 
 if __name__ == '__main__':
     main()
