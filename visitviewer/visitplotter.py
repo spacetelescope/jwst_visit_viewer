@@ -254,8 +254,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
             fgs_aperture.set_attitude_matrix(attmatid)
 
             # how many reference stars does this guide star have?
-            for nrefs in range(10,0,-1):
-                if hasattr(gs, f'REF{nrefs}X'): break
+            nrefs = max([n for n in range(0,11) if hasattr(gs, f'REF{n}X')]+[0])
 
             # Compute the RA, Dec of the guide star. We do this using ID X,Y coordinates because
             # second and subsequent FGSMAIN calls seem not to always have GSRA, GSDEC, but they
@@ -267,23 +266,21 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
             gs_ls = gs_linestyles[min(gs_id, len(gs_linestyles)-1)]
 
             fgs_aperture.plot(frame='sky', transform=ax.get_transform('icrs'), color=gscolor, ls=gs_ls, fill=False, alpha=alpha)
-
             plt.scatter(*gs_radec, s=160, edgecolor=gscolor, facecolor='none',
                         transform=ax.get_transform('icrs'), alpha=alpha)
             plt.text(*gs_radec, f"   \n   GS candidate {gs_id+1}, with {nrefs} ref", alpha=alpha,
                     color=gscolor, transform=ax.get_transform('icrs'), horizontalalignment='left')
 
-
+            # Iterate over reference stars for this guide star. Plot them, and sanity check their distinctness
             for ref_id in range(1,10):
                 if hasattr(gs, f'REF{ref_id}X'):
                     refx = getattr(gs, f'REF{ref_id}X')
                     refy = getattr(gs, f'REF{ref_id}Y')
-
                     refradec = fgs_aperture.idl_to_sky(refx, refy)
+
                     # Overplot
                     plt.scatter(*refradec, marker='+', s=50, color='orange', alpha=alpha,
                                 transform=ax.get_transform('icrs'))
-
                     if ref_id==1 and gs_id==0:
                         plt.text(*refradec, "GS References:  ",
                                  transform=ax.get_transform('icrs'),
