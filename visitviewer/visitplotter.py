@@ -185,16 +185,6 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
     v3pa_at_gs = visit.slew.GSPA + (0 if visit._no_gspa_yoffset else fgs_aperture.V3IdlYAngle)
 
     guidemode = slew.GUIDEMODE
-    if guidemode=='COARSE':
-        gslabel = "\n'pseudo guide star'\n(slew coordinates\n for Coarse pointing)"
-    else:
-        gslabel = "\nguide star"
-
-    plt.scatter(visit.slew.GSRA, visit.slew.GSDEC,  s=200, edgecolor=gscolor, facecolor='none',
-            transform=ax.get_transform('icrs'))
-    plt.text(visit.slew.GSRA, visit.slew.GSDEC, gslabel,
-             transform=ax.get_transform('icrs'),
-             horizontalalignment='left', verticalalignment='top', color=gscolor)
 
     if v1_ra > j_ra:
         v1_ha, j_ha = 'right', 'left'
@@ -226,10 +216,20 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         # we only have a science attitude
         attmatsci = visit.get_attitude_matrix(step='slew')
         guide_det_info = ""
+        gslabel = "\n'pseudo guide star'\n(slew coordinates\n for Coarse pointing)"
+        plt.scatter(visit.slew.GSRA, visit.slew.GSDEC, s=160, edgecolor=gscolor, facecolor='none',
+                    transform=ax.get_transform('icrs'))
+        plt.text(visit.slew.GSRA, visit.slew.GSDEC, gslabel,
+                 transform=ax.get_transform('icrs'),
+                 horizontalalignment='left', verticalalignment='top', color=gscolor)
+
     else:
-        # there are possibly distinct science and ID attitudes
+        # There are possibly distinct science and ID attitudes
+        # And there may be multiple guide star
         attmatsci = visit.get_attitude_matrix(step='sci')
         attmatid = visit.get_attitude_matrix(step='id')
+        # print("ID ATTITUDE:", attmatid)
+        # print("SCIENCE ATTITUDE:", attmatsci)
         fgs_detector = 1 if visit.slew.DETECTOR=='GUIDER1' else 2
         guide_det_info = f", on FGS{fgs_detector}"
 
@@ -239,79 +239,76 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         plt.text(0.02, 0.02, f"Yellow = ID attitude",
                 color=gscolor, transform=ax.transAxes, horizontalalignment='left')
 
-        # Try to plot the different possible GS reference stars
-        gs = visit.guide_activities[0]
-        plt.scatter(gs.GSRA, gs.GSDEC, marker='+', s=30, color=gscolor,
-                    transform=ax.get_transform('icrs'))
+        # Set up some variables we'll use below
+        gs_warning_text = ""
+        gs_linestyles = ('-', '--', ':', 'dashdot')
 
-       #  try:
-       #      ref1radec = fgs_aperture.idl_to_sky(gs.REF1X, gs.REF1Y)
-       #      plt.scatter(*ref1radec, marker='+', s=50, color='orange',
-       #              transform=ax.get_transform('icrs'))
-       # except AttributeError:
-       #      pass # Not all visits have a REF1
-       #
-       #  try:
-       #      ref2radec = fgs_aperture.idl_to_sky(gs.REF2X, gs.REF2Y)
-       #      plt.scatter(*ref2radec, marker='+', s=50, color='orange',
-       #                  transform=ax.get_transform('icrs'))
-       #  except AttributeError:
-       #      pass # Not all visits have a REF1
+        # Plot (and check) the different possible GS reference stars
+        for gs_id, gs in enumerate(visit.guide_activities):
+            if gs.args[1]=='FGSVERMAIN': continue
 
-        # # Let's do some sanity checks
-        # try:
-        #     # TODO generalize this to check up to 10 reference stars
-        #     differences = ((np.sqrt((gs.REF1X-gs.REF2X)**2 + (gs.REF1Y - gs.REF2Y)**2 ), "GS REF1 and REF2"),
-        #                    (np.sqrt((gs.GSXID-gs.REF2X)**2 + (gs.GSYID - gs.REF2Y)**2 ), "GUIDE STAR and REF2"),
-        #                    (np.sqrt((gs.GSXID - gs.REF1X) ** 2 + (gs.GSYID - gs.REF1Y) ** 2), "GUIDE STAR and REF2"),)
-        #     for gs_ref_separation, gserrlabel in differences:
-        #         if gs_ref_separation< 2:
-        #             plt.text(gs.GSRA, gs.GSDEC, f"WARNING: {gserrlabel} ARE\n LESS THAN 2 ARCSEC APART\nMAY NOT BE WELL SEPARATED ENOUGH",
-        #                      color='red', fontweight='bold', transform=ax.get_transform('icrs'),fontsize=20, zorder=100,
-        #                      horizontalalignment='center')
-        # except AttributeError:
-        #     pass # Not all visits have a REF1
 
-        errmsgcount=0
-        for ref_id in range(1,10):
-            if hasattr(gs, f'REF{ref_id}X'):
-                refx = getattr(gs, f'REF{ref_id}X')
-                refy = getattr(gs, f'REF{ref_id}Y')
+            # For each FGSMAIN call, work out the attitude matrix for the ID attitude:
+            attmatid = visit.get_attitude_matrix(step='id', gscandidate=gs_id + 1)
+            print(f"GS {gs_id + 1}, ID attmat: {attmatid}")
+            fgs_aperture.set_attitude_matrix(attmatid)
 
-                refradec = fgs_aperture.idl_to_sky(refx, refy)
-                # Overplot
-                plt.scatter(*refradec, marker='+', s=50, color='orange',
-                            transform=ax.get_transform('icrs'))
+            # how many reference stars does this guide star have?
+            for nrefs in range(10,0,-1):
+                if hasattr(gs, f'REF{nrefs}X'): break
 
-                if ref_id==1:
-                    plt.text(*refradec, "GS References:  ",
-                             transform=ax.get_transform('icrs'),
-                             horizontalalignment='right', verticalalignment='center', color='orange')
+            # Compute the RA, Dec of the guide star. We do this using ID X,Y coordinates because
+            # second and subsequent FGSMAIN calls seem not to always have GSRA, GSDEC, but they
+            # always have GSXID, GSYID
+            gs_radec = fgs_aperture.idl_to_sky(gs.GSXID, gs.GSYID)
 
-                # Let's do some sanity checks
-                # Is this reference star distinct from the guide star?
-                gs_ref_separation = np.sqrt((gs.GSXID-refx)**2 + (gs.GSYID - refy)**2 )
-                if gs_ref_separation < 2:
-                    errmsg =f"WARNING: GUIDE STAR AND REF {ref_id} ARE\n LESS THAN 2 ARCSEC APART\nMAY NOT BE WELL SEPARATED ENOUGH"
-                    print(errmsg)
-                    plt.text(gs.GSRA, gs.GSDEC, errmsgcount*3*"\n" + errmsg,
-                             color='red', fontweight='bold', transform=ax.get_transform('icrs'), fontsize=20, zorder=100,
-                             horizontalalignment='center')
-                    errmsgcount += 1
-                # Is this reference star distinct from the other references?
-                for other_ref_id in range(1,ref_id):
-                    other_refx = getattr(gs, f'REF{other_ref_id}X')
-                    other_refy = getattr(gs, f'REF{other_ref_id}Y')
-                    ref_ref_separation = np.sqrt((other_refx-refx)**2 + (other_refy - refy)**2 )
-                    if ref_ref_separation < 2:
-                        refradec = fgs_aperture.idl_to_sky(refx, refy)
-                        errmsg = f"WARNING: GUIDE STAR REF {ref_id} AND REF {other_ref_id} ARE\n LESS THAN 2 ARCSEC APART\nMAY NOT BE WELL SEPARATED ENOUGH"
-                        print(errmsg)
-                        errmsgcount += 1
-                        plt.text(*refradec, (errmsgcount*10*"\n") + errmsg,
-                             color='red', fontweight='bold', transform=ax.get_transform('icrs'), fontsize=20, zorder=100,
-                             horizontalalignment='center')
-                print(errmsgcount)
+            # Plot them, using shades fading out for later attempts
+            alpha = max(1-gs_id*0.2, 0.5)
+            gs_ls = gs_linestyles[min(gs_id, len(gs_linestyles)-1)]
+
+            fgs_aperture.plot(frame='sky', transform=ax.get_transform('icrs'), color=gscolor, ls=gs_ls, fill=False, alpha=alpha)
+
+            plt.scatter(*gs_radec, s=160, edgecolor=gscolor, facecolor='none',
+                        transform=ax.get_transform('icrs'), alpha=alpha)
+            plt.text(*gs_radec, f"   \n   GS candidate {gs_id+1}, with {nrefs} ref", alpha=alpha,
+                    color=gscolor, transform=ax.get_transform('icrs'), horizontalalignment='left')
+
+
+            for ref_id in range(1,10):
+                if hasattr(gs, f'REF{ref_id}X'):
+                    refx = getattr(gs, f'REF{ref_id}X')
+                    refy = getattr(gs, f'REF{ref_id}Y')
+
+                    refradec = fgs_aperture.idl_to_sky(refx, refy)
+                    # Overplot
+                    plt.scatter(*refradec, marker='+', s=50, color='orange', alpha=alpha,
+                                transform=ax.get_transform('icrs'))
+
+                    if ref_id==1 and gs_id==0:
+                        plt.text(*refradec, "GS References:  ",
+                                 transform=ax.get_transform('icrs'),
+                                 horizontalalignment='right', verticalalignment='center', color='orange')
+
+                    # Let's do some sanity checks
+                    # Is this reference star distinct from the guide star?
+                    gs_ref_separation = np.sqrt((gs.GSXID-refx)**2 + (gs.GSYID - refy)**2 )
+                    if gs_ref_separation < 2:
+                        errmsg =f"WARNING: FOR GS #{gs_id+1}, GUIDE STAR AND REF {ref_id} ARE LESS THAN 2 ARCSEC APART\nMAY NOT BE WELL SEPARATED ENOUGH\n"
+                        gs_warning_text += errmsg
+                    # Is this reference star distinct from the other references?
+                    for other_ref_id in range(1,ref_id):
+                        other_refx = getattr(gs, f'REF{other_ref_id}X')
+                        other_refy = getattr(gs, f'REF{other_ref_id}Y')
+                        ref_ref_separation = np.sqrt((other_refx-refx)**2 + (other_refy - refy)**2 )
+                        if ref_ref_separation < 2:
+                            errmsg = f"WARNING: FOR GS #{gs_id+1}, REF {ref_id} AND REF {other_ref_id} ARE LESS THAN 2 ARCSEC APART\nMAY NOT BE WELL SEPARATED ENOUGH\n"
+                            gs_warning_text += errmsg
+
+        if gs_warning_text != "":
+            print(gs_warning_text)
+            plt.gcf().text(0.5, 0.1, gs_warning_text,
+                     horizontalalignment='center',
+                     color='red', fontweight='bold', fontsize=18, zorder=1000)
         #plot_gs_id_references(visit.s
 
     # Plot all apertures, faintly

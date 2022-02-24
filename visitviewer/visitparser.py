@@ -422,16 +422,32 @@ class VisitFileContents(object):
             if not self.uses_guiding():
                 raise RuntimeError("This visit does not use guiding, therefore there is no Guide ID attitude.")
             # is this always the same as the slews[indx]?
-            ra = visit.guide_activities[indx].GSRA
-            dec = visit.guide_activities[indx].GSDEC
+
+            print(step, indx)
+            try:
+                ra = visit.guide_activities[indx].GSRA
+                dec = visit.guide_activities[indx].GSDEC
+            except AttributeError:
+                # subsequent GS calls (not the first in a visit file) may not have GSRA, GSDEC in the FGSMAIN call,
+                # so look at the previous slew statement?
+                ra = visit.slews[indx].GSRA
+                dec = visit.slews[indx].GSDEC
+
             pa = visit.guide_activities[indx].GSROLLID
             x_idl = visit.guide_activities[indx].GSXID
             y_idl = visit.guide_activities[indx].GSYID
+            print(ra,dec, pa, x_idl, y_idl)
         elif step == 'sci':
             if self.uses_guiding():
                 # Guided visit, therefore read science attitude from the FGSMAIN call
-                ra = visit.guide_activities[indx].GSRA
-                dec = visit.guide_activities[indx].GSDEC
+                try:
+                    ra = visit.guide_activities[indx].GSRA
+                    dec = visit.guide_activities[indx].GSDEC
+                except AttributeError:
+                    # subsequent GS calls (not the first in a visit file) may not have GSRA, GSDEC in the FGSMAIN call,
+                    # so look at the previous slew statement?
+                    ra = visit.slews[indx].GSRA
+                    dec = visit.slews[indx].GSDEC
                 try:
                     pa = visit.guide_activities[indx].GSROLLSCI
                     x_idl = visit.guide_activities[indx].GSXSCI
