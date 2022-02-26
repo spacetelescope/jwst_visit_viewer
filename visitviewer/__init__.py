@@ -69,7 +69,8 @@ def main():
                    verbose=args.verbose, save=True)
     elif args.multipage and len(args.filename) > 1:
         # Generate one multi page PDF output
-        multi_view(args.filename, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir, verbose=args.verbose)
+        multi_view(args.filename, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir, verbose=args.verbose,
+                   center_visit=args.center)
 
     else:
         # Generate a separate PDF per each input

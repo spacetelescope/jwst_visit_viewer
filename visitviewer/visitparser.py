@@ -490,8 +490,7 @@ class VisitFileContents(object):
             # The provided GSPA should be interpreted as the PA of the FGS Ideal coordinate system Y axis,
             # which is rotated relative to the V3 axis by some amount
 
-            # TODO double check sign convention here... Lallo and Sohn provided opposite recommendations...
-            fgs_Yics_offset = -1.25  # Degrees, rotation offset between FGS1 Yics and V3PA, from SIAF
+            fgs_Yics_offset = fgs_aperture.V3IdlYAngle  # Degrees, rotation offset between FGS1 Yics and V3PA, from SIAF
             v3pa_at_guidestar =  pa - fgs_Yics_offset
 
         # Compute attitude matrix

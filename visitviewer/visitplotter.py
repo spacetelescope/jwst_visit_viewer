@@ -125,8 +125,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
 
     if center_visit is not None:
         # Override default center coordinates using some other visit
-        print(f"Overriding plot center coordinates using {center_visit}")
-        print("Original", mcf_ra, mcf_dec)
+        print(f"Overriding plot center coordinates; will center based on {center_visit}")
         from . import visitparser
         center_visit_parsed = visitparser.VisitFileContents(center_visit)
         center_fgs_aperture_name = center_visit_parsed.get_guider_aperture(return_name=True)
@@ -134,7 +133,6 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         center_attmat = center_visit_parsed.get_attitude_matrix(step='sci')
         center_fgs_aperture.set_attitude_matrix(center_attmat)
         mcf_ra, mcf_dec = center_fgs_aperture.tel_to_sky(0, -468)  # RA, Dec of master chief ray location (between NIRCam A+B)
-        print("Overridden", mcf_ra, mcf_dec)
 
     # Compute RA, Dec, PA of the V1 axis, for comparison to values in SciOps OP delivery report
     v1_ra, v1_dec = fgs_aperture.tel_to_sky(0,0)        # RA, Dec of V1 axis reference location
@@ -222,6 +220,9 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         plt.text(visit.slew.GSRA, visit.slew.GSDEC, gslabel,
                  transform=ax.get_transform('icrs'),
                  horizontalalignment='left', verticalalignment='top', color=gscolor)
+        plt.text(0.02, 0.07,
+             f"Pseudo guide star at {visit.slew.GSRA:.7f}, {visit.slew.GSDEC:.7f}, GSPA={visit.slew.GSPA}",
+             color=gscolor, transform=ax.transAxes, verticalalignment='bottom')
 
     else:
         # There are possibly distinct science and ID attitudes
@@ -260,6 +261,10 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
             # second and subsequent FGSMAIN calls seem not to always have GSRA, GSDEC, but they
             # always have GSXID, GSYID
             gs_radec = fgs_aperture.idl_to_sky(gs.GSXID, gs.GSYID)
+            try:
+                gspa = gs.GSPA
+            except AttributeError:
+                gspa = visit.slews[gs_id].GSPA
 
             # Plot them, using shades fading out for later attempts
             alpha = max(1-gs_id*0.2, 0.5)
@@ -270,6 +275,9 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
                         transform=ax.get_transform('icrs'), alpha=alpha)
             plt.text(*gs_radec, f"   \n   GS candidate {gs_id+1}, with {nrefs} ref", alpha=alpha,
                     color=gscolor, transform=ax.get_transform('icrs'), horizontalalignment='left')
+            plt.text(0.02, 0.07 + 0.02*(len(visit.guide_activities) - gs_id - 2), # subtract 1 extra to account for the FGSVERMAIN
+                     f"Guide star candidate {gs_id+1} at {gs_radec[0]:.7f}, {gs_radec[1]:.7f}, GSPA={gspa}",
+                     color=gscolor, alpha=alpha, transform=ax.transAxes, verticalalignment='bottom')
 
             # Iterate over reference stars for this guide star. Plot them, and sanity check their distinctness
             for ref_id in range(1,10):
@@ -338,7 +346,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
     plt.text(0.98, template_ypos, f"Template = {visit.template}", color='white',
             transform=ax.transAxes, horizontalalignment='right',
             verticalalignment='top')
-    plt.text(0.02, 0.05, f"Guide star at {visit.slew.GSRA:.7f}, {visit.slew.GSDEC:.7f}, GSPA={visit.slew.GSPA}\nGuide mode = {guidemode}{guide_det_info}",
+    plt.text(0.02, 0.05, f"Guide mode = {guidemode}{guide_det_info}",
             color=gscolor, transform=ax.transAxes)
     plt.text(0.98, 0.05, f"Shaded apertures are used\n in this observation",
             color='cyan', transform=ax.transAxes, horizontalalignment='right')
