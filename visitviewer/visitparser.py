@@ -489,8 +489,13 @@ class VisitFileContents(object):
         else:
             # The provided GSPA should be interpreted as the PA of the FGS Ideal coordinate system Y axis,
             # which is rotated relative to the V3 axis by some amount
+            # We learned in flight this is ALWAYS interpreted as in the FGS *1* frame, regardless of which FGS is being used
 
-            fgs_Yics_offset = fgs_aperture.V3IdlYAngle  # Degrees, rotation offset between FGS1 Yics and V3PA, from SIAF
+
+            #fgs_Yics_offset = fgs_aperture.V3IdlYAngle  # Degrees, rotation offset between FGS1 Yics and V3PA, from SIAF
+            #fgs_Yics_offset = -1.25
+            from .visitplotter import SIAFS
+            fgs_Yics_offset = SIAFS['FGS'].apertures['FGS1_FULL_OSS'].V3IdlYAngle
             v3pa_at_guidestar =  pa - fgs_Yics_offset
 
         # Compute attitude matrix
@@ -511,7 +516,8 @@ class VisitFileContents(object):
         if return_name:
             return fgs_aperture_name
         else:
-            fgs_aperture = pysiaf.Siaf('FGS').apertures[fgs_aperture_name]
+            from .visitplotter import SIAFS
+            fgs_aperture = SIAFS['FGS'].apertures[fgs_aperture_name]
             return fgs_aperture
 
     def get_nrcfilecount(self):
