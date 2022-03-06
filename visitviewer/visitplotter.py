@@ -275,7 +275,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
                         transform=ax.get_transform('icrs'), alpha=alpha)
             plt.text(*gs_radec, f"   \n   GS candidate {gs_id+1}, with {nrefs} ref", alpha=alpha,
                     color=gscolor, transform=ax.get_transform('icrs'), horizontalalignment='left')
-            plt.text(0.02, 0.07 + 0.02*(len(visit.guide_activities) - gs_id - 2), # subtract 1 extra to account for the FGSVERMAIN
+            plt.text(0.02, 0.07 + 0.02*(len(visit.guide_activities) - gs_id - 1),
                      f"Guide star candidate {gs_id+1} at {gs_radec[0]:.7f}, {gs_radec[1]:.7f}, GSPA={gspa}",
                      color=gscolor, alpha=alpha, transform=ax.transAxes, verticalalignment='bottom')
 
@@ -359,7 +359,8 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
     if verbose:
         print(f"APT program: {apt_program_id}")
     if apt_program_id in PROGRAMS_WITH_SEGMENT_GUIDING and visit.uses_guiding():
-        plt.text(0.02, 0.125, f"Segment guiding may be used in this program\nThe guide star indicated may be a segment PSF offset from the star location",
+        plt.text(0.02, np.max( [0.125, 0.07 + 0.02*(len(visit.guide_activities) +1)])
+                 , f"Segment guiding may be used in this program\nThe guide star indicated may be a segment PSF offset from the star location",
             color=gscolor, transform=ax.transAxes)
 
 

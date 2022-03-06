@@ -233,7 +233,8 @@ class VisitFileContents(object):
         self.activities = self._find_statements('ACT')  # all the activities
 
 
-        self.guide_activities = [a for a in self.activities if isinstance(a, GuideStatement)]
+        self.guide_activities = [a for a in self.activities if (isinstance(a, GuideStatement) and
+                                 (a.scriptname != 'FGSVERMAIN'))]
         self.si_activities = [a for a in self.activities if (not isinstance(a, GuideStatement) and
                                                              (a.scriptname != 'GENWAITMAIN'))]
 
@@ -423,7 +424,7 @@ class VisitFileContents(object):
                 raise RuntimeError("This visit does not use guiding, therefore there is no Guide ID attitude.")
             # is this always the same as the slews[indx]?
 
-            print(step, indx)
+            # print(step, indx)
             try:
                 ra = visit.guide_activities[indx].GSRA
                 dec = visit.guide_activities[indx].GSDEC
