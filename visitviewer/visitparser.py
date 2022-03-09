@@ -275,6 +275,12 @@ class VisitFileContents(object):
                     config = None  # This moves the PIL but does not take images
                 elif activity.scriptname == 'NRCTAMAIN' :
                     config = None  # This performs TA, but we can ignore that and read the apertures from some later NRCMAIN call
+                elif activity.scriptname == 'NRCWFCPMAIN' :
+                    try:
+                        config = activity.CONFIG
+                    except AttributeError:
+                        config = None  # special case for Coarse Phasing, which sometimes moves mirrors instead of taking images. 
+                                       # thos calls do not have a 'CONFIG' parameter
                 else:
                     config = activity.CONFIG
 
