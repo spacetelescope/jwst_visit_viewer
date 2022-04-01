@@ -355,11 +355,15 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         attmatsci_mosaic = visit.get_attitude_matrix(step='sci', fgs_delta_from_sam=gsoffset)
         for iact, act in enumerate(visit.si_activities):
             if act.scriptname == 'SCSAMMAIN':
-                gsoffset[0] += act.FGS1DELTAX
-                gsoffset[1] += act.FGS1DELTAY
+                if hasattr(act, "FGS1DELTAX"):
+                    sam = (act.FGS1DELTAX, act.FGS1DELTAY)
+                else:
+                    sam = (act.FGS2DELTAX, act.FGS2DELTAY)
+                gsoffset[0] += sam[0]
+                gsoffset[1] += sam[1]
                 mosaic_pos.append(gsoffset.copy())
                 if verbose:
-                    print(f"Mosaic offset SAM: {act.FGS1DELTAX}, {act.FGS1DELTAY}\tcumulative: {gsoffset} arcsec")
+                    print(f"Mosaic offset SAM: {sam}\tcumulative: {gsoffset} arcsec")
 
                 attmatsci_mosaic = visit.get_attitude_matrix(step='sci', fgs_delta_from_sam=gsoffset)
             else:
