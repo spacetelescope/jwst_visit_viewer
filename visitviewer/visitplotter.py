@@ -232,7 +232,6 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         # print("ID ATTITUDE:", attmatid)
         # print("SCIENCE ATTITUDE:", attmatsci)
         fgs_detector = 1 if visit.slew.DETECTOR=='GUIDER1' else 2
-        guide_det_info = f", on FGS{fgs_detector}"
 
         # Plot FGS aperture at ID attitude
         fgs_aperture.set_attitude_matrix(attmatid)
@@ -245,6 +244,14 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         gs_linestyles = ('-', '--', ':', 'dashdot')
 
         # Plot (and check) the different possible GS reference stars
+
+        # first, check if all guiding is on same guider
+        guiders_used = set()
+        for gs_id, gs in enumerate(visit.guide_activities):
+            guiders_used.add(gs.DETECTOR)
+        single_guider = len(guiders_used)==1
+        guide_det_info = f", on FGS{fgs_detector}" if single_guider else ", G1 or G2"
+
         for gs_id, gs in enumerate(visit.guide_activities):
             if gs.args[1]=='FGSVERMAIN': continue
 
@@ -275,8 +282,9 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
                         transform=ax.get_transform('icrs'), alpha=alpha)
             plt.text(*gs_radec, f"   \n   GS candidate {gs_id+1}, with {nrefs} ref", alpha=alpha,
                     color=gscolor, transform=ax.get_transform('icrs'), horizontalalignment='left')
+            extra_gs_text = "" if single_guider else f" on {gs.DETECTOR.replace('UIDER','')}"
             plt.text(0.02, 0.07 + 0.02*(len(visit.guide_activities) - gs_id - 1),
-                     f"Guide star candidate {gs_id+1} at {gs_radec[0]:.7f}, {gs_radec[1]:.7f}, GSPA={gspa}",
+                     f"Guide star candidate {gs_id+1} at {gs_radec[0]:.7f}, {gs_radec[1]:.7f}, GSPA={gspa}{extra_gs_text}",
                      color=gscolor, alpha=alpha, transform=ax.transAxes, verticalalignment='bottom')
 
             # Iterate over reference stars for this guide star. Plot them, and sanity check their distinctness
@@ -287,7 +295,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
                     refradec = fgs_aperture.idl_to_sky(refx, refy)
 
                     # Overplot
-                    plt.scatter(*refradec, marker='+', s=50, color='orange', alpha=alpha,
+                    plt.scatter(*refradec, marker='D', s=40, color='orange', alpha=alpha, facecolor='none',
                                 transform=ax.get_transform('icrs'))
                     if ref_id==1 and gs_id==0:
                         plt.text(*refradec, "GS References:  ",
