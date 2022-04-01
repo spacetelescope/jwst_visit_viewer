@@ -110,9 +110,10 @@ class ActivityStatement(SlewOrActStatement):
         Readout={s.NGROUPS:.0f} groups, {s.NINTS:.0f} ints
         SW={s.FILTSHORTA}, LW={s.FILTLONGA}"""
         elif self.scriptname == 'NRCMAIN':
+            module = 'B' if 'B' in self.CONFIG else 'A'
             description = """{s.scriptname}  {s.CONFIG}
         Readout={s.NGROUPS:.0f} groups, {s.NINTS:.0f} ints
-        SW={s.FILTSHORTA}, LW={s.FILTLONGA}"""
+        SW={s.FILTSHORT""" + module + "}, LW={s.FILTLONG" + module+"}"
         elif self.scriptname == 'NRCWFCPMAIN':
             if hasattr(self, "WFCGROUP"):
                 description = f"{self.scriptname}  mirror move WFCGROUP={int(self.WFCGROUP)}"
@@ -159,6 +160,11 @@ def parse_visit_file(lines):
         apt_template = lines[0][2:].strip()
     else:
         apt_template = "UNKNOWN"
+
+    # for parallels, second line will give a comment
+    if lines[1].startswith("# ") and not lines[1].startswith("# OSS"):
+        apt_template += " with parallel "+lines[1][2:].strip()
+
 
     # Simple parsing that ignores commands and newlines, but respects the fact that
     # OSS parameters are separated by the exact string " ," with the comma necessarily after whitespace.
@@ -337,7 +343,6 @@ class VisitFileContents(object):
         if self.slew.GUIDEMODE != 'COARSE':
             for activity in self.guide_activities:
                 main_apertures.append(f"FGS{activity.DETECTOR[-1]}_FULL_OSS")
-            #main_apertures.append(self.get_guider_aperture(return_name=True))
 
         # eliminate duplicates
         main_apertures = list(set(main_apertures))
@@ -346,6 +351,9 @@ class VisitFileContents(object):
 
     def uses_guiding(self):
         return len(self.guide_activities) > 0
+
+    def uses_sams(self):
+        return 'SCSAMMAIN' in [a.scriptname for a in self.si_activities]
 
     def short_summary(self):
         """ Succinct summary of what's in this visit. Should be no more than 1-2 lines
@@ -445,7 +453,7 @@ class VisitFileContents(object):
             pa = visit.guide_activities[indx].GSROLLID
             x_idl = visit.guide_activities[indx].GSXID
             y_idl = visit.guide_activities[indx].GSYID
-            print(ra,dec, pa, x_idl, y_idl)
+            #print(ra,dec, pa, x_idl, y_idl, visit.guide_activities[indx].gsa)
         elif step == 'sci':
             if self.uses_guiding():
                 # Guided visit, therefore read science attitude from the FGSMAIN call

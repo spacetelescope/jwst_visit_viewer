@@ -258,7 +258,8 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
 
             # For each FGSMAIN call, work out the attitude matrix for the ID attitude:
             attmatid = visit.get_attitude_matrix(step='id', gscandidate=gs_id + 1)
-            print(f"GS {gs_id + 1}, ID attmat: {attmatid}")
+            if verbose:
+                print(f"GS {gs_id + 1}, ID attmat: {attmatid}")
             fgs_aperture.set_attitude_matrix(attmatid)
 
             # how many reference stars does this guide star have?
@@ -347,9 +348,39 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         nrca3_aperture.set_attitude_matrix(attmatsci)
         nrca3_aperture.plot(frame='sky', transform=ax.get_transform('icrs'), color='white', fill=False)
 
+    # Does this visit have multiple pointings for a mosaic? If so, plot those.
+    mosaic_pos = []
+    if visit.uses_sams():
+        gsoffset = np.zeros(2)  # start with 0,0 offsets initially at start of visit, relative to initial science attitude
+        attmatsci_mosaic = visit.get_attitude_matrix(step='sci', fgs_delta_from_sam=gsoffset)
+        for iact, act in enumerate(visit.si_activities):
+            if act.scriptname == 'SCSAMMAIN':
+                gsoffset[0] += act.FGS1DELTAX
+                gsoffset[1] += act.FGS1DELTAY
+                mosaic_pos.append(gsoffset.copy())
+                if verbose:
+                    print(f"Mosaic offset SAM: {act.FGS1DELTAX}, {act.FGS1DELTAY}\tcumulative: {gsoffset} arcsec")
+
+                attmatsci_mosaic = visit.get_attitude_matrix(step='sci', fgs_delta_from_sam=gsoffset)
+            else:
+                for apername in visit.apertures_used():
+                    if apername.startswith('FGS'): continue # don't plot these for each pointing
+                    aper_key = apername[0:4] if apername.startswith("M") else apername[
+                                                                              0:3]  # NRC, NRS, NIS, FGS, or MIRI
+                    aperture = SIAFS[aper_key][apername]
+                    aperture.set_attitude_matrix(attmatsci_mosaic)
+                    aperture.plot(frame='sky', transform=ax.get_transform('icrs'), ls='--',
+                                  color='cyan', fill_color='cyan', fill=True, fill_alpha=0.02, alpha=0.5)
+    else:
+        n_mosaic_pos = 0
+
 
     plt.text(0.02, 0.98, f"Pointing for {os.path.basename(visit.filename)}", color='white', fontweight='bold',
             transform=ax.transAxes, fontsize=12, verticalalignment='top')
+    if len(mosaic_pos) > 0:
+        mosaic_pos = np.asarray(mosaic_pos)
+        plt.text(0.03, 0.95, f"with {len(mosaic_pos)} mosaic pointings, spanning {np.ptp(mosaic_pos[:,0]):.1f}, {np.ptp(mosaic_pos[:,1]):.1f} arcsec in FGS X,Y", color='cyan', fontweight='bold',
+                 transform=ax.transAxes, fontsize=11, verticalalignment='top')
     template_ypos = 0.94 if len(visit.template) > 35 else 0.98   # avoid text overlap for very long names
     plt.text(0.98, template_ypos, f"Template = {visit.template}", color='white',
             transform=ax.transAxes, horizontalalignment='right',
@@ -475,6 +506,8 @@ def plot_mosaic_pointings_fov(visitlist, center_on_visit=0, subplotspec=None, ve
             elif act.scriptname == 'SCSAMMAIN':
                 gsoffset[0] += act.FGS1DELTAX
                 gsoffset[1] += act.FGS1DELTAY
+                if verbose:
+                    print(gsoffset)
 
                 attmatsci = visit.get_attitude_matrix(step='slew', fgs_delta_from_sam=gsoffset)
 
