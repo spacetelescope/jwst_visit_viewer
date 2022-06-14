@@ -109,11 +109,16 @@ class ActivityStatement(SlewOrActStatement):
             description = """{s.scriptname}  {s.CONFIG} WFCGROUP={s.WFCGROUP}
         Readout={s.NGROUPS:.0f} groups, {s.NINTS:.0f} ints
         SW={s.FILTSHORTA}, LW={s.FILTLONGA}"""
-        elif self.scriptname == 'NRCMAIN':
+        elif self.scriptname == 'NRCMAIN' and hasattr(self, 'CONFIG'):
             module = 'B' if 'B' in self.CONFIG else 'A'
             description = """{s.scriptname}  {s.CONFIG}
         Readout={s.NGROUPS:.0f} groups, {s.NINTS:.0f} ints
         SW={s.FILTSHORT""" + module + "}, LW={s.FILTLONG" + module+"}"
+        elif self.scriptname == 'NRCMAIN' and hasattr(self, 'CORON'):
+            module = 'A'
+            description = """{s.scriptname}  coron={s.CORON}
+        Readout={s.NGROUPS:.0f} groups, {s.NINTS:.0f} ints
+        filter={s.CORFILT}"""
         elif self.scriptname == 'NRCWFCPMAIN':
             if hasattr(self, "WFCGROUP"):
                 description = f"{self.scriptname}  mirror move WFCGROUP={int(self.WFCGROUP)}"
@@ -194,7 +199,7 @@ def parse_visit_file(lines):
         elif parsedcmd.name == 'SLEW':
             parsedcmd = SlewStatement(cmd, group=ct_group, sequence=ct_seq)
         elif parsedcmd.name == 'ACT':
-            if parsedcmd.args[1] == 'FGSMAIN' or parsedcmd.args[1] == 'FGSVERMAIN':
+            if parsedcmd.args[1] == 'FGSMAIN' or parsedcmd.args[1] == 'FGSVERMAIN' or  parsedcmd.args[1] == 'FGSMTMAIN' :
                 parsedcmd = GuideStatement(cmd, group=ct_group, sequence=ct_seq)
             else:
                 parsedcmd = ActivityStatement(cmd, group=ct_group, sequence=ct_seq)
@@ -287,6 +292,15 @@ class VisitFileContents(object):
                     except AttributeError:
                         config = None  # special case for Coarse Phasing, which sometimes moves mirrors instead of taking images. 
                                        # thos calls do not have a 'CONFIG' parameter
+                elif activity.scriptname == 'NRCMAIN' and hasattr(activity, 'CORON'):
+                    config = 'CORON'
+                    coron_aper_map = {'MASKA210R': 'NRCA2_MASK210R',
+                                      'MASKA335R': 'NRCA5_MASK335R',
+                                      'MASKA430R': 'NRCA5_MASK430R',
+                                      'MASKASWB': 'NRCA4_MASKSWB',
+                                      'MASKALWB': 'NRCA5_MASKLWB',
+                            }
+                    apernames.append(coron_aper_map[activity.CORON])
                 else:
                     config = activity.CONFIG
 
