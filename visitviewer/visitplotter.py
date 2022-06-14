@@ -624,6 +624,8 @@ def show_field_of_regard_ecliptic(visit, datetime=None, projection='lambert', su
         plt.text(0.5, 0.55, 'anti-sun', transform=ax.transAxes, color='black', horizontalalignment='center')
         plt.text(0.5, 0.5+0.38, 'N CVZ', transform=ax.transAxes, color='blue')
         plt.text(0.5, 0.5-0.38, 'S CVZ', transform=ax.transAxes, color='blue', verticalalignment='top')
+        plt.text(0.5-0.35, 0.54, 'ram', transform=ax.transAxes, color='dimgray', verticalalignment='bottom')
+        plt.text(0.5+0.35, 0.54, 'wake', transform=ax.transAxes, color='dimgray', verticalalignment='bottom', horizontalalignment='right')
 
     #plt.text(0.99, 0.01, f"JWST field of regard\non {datetime.to_value('iso',subfmt='date')}\n[Ecliptic coords]",
     #         transform=ax.transAxes, horizontalalignment='right')
