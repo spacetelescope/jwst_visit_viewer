@@ -673,8 +673,13 @@ def show_field_of_regard_ra_dec(visit, datetime=None, subplotspec=None, labelaxe
     return ax
 
 
-def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True, label_markers=False):
+def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True, label_markers=False, npts=360*2+1):
     """Main routine to plot celestial markers for sun, target, and various circles
+
+    Parameters
+    ----------
+    npts : int
+        Number of points to rasterize circles into. Increase this if the plot output is not smooth for larger plot sizes.
     """
 
     if datetime is None and visit is not None:
@@ -696,7 +701,6 @@ def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True
 
     # Draw galactic and ecliptic planes
     # JWST's CVZs are defined by the Barycentric version of the ecliptic plane.
-    npts = 360*4+1
     plot_circle_coords(np.linspace(0,360,npts), np.zeros(npts), 'galactic', frame, ax,
                        ls='none',marker='.', markersize=2, color='maroon', alpha=0.3)
     plot_circle_coords(np.linspace(0,360,npts)-180, np.zeros(npts), 'barycentricmeanecliptic', frame, ax,
@@ -1009,6 +1013,7 @@ def plot_field_of_regard_on_date(date,
     """
 
     plt.figure(figsize=figsize)
+    npts = 360*4+1  # Higher than the default, for nice smooth plot output
 
     datetime = astropy.time.Time(date)
 
@@ -1038,7 +1043,7 @@ def plot_field_of_regard_on_date(date,
 
 
     # Plot all the markers for sun, ecliptic plane, galactic plane
-    plot_celestial_markers(visit=None, ax=ax, frame=frame, datetime=datetime, label_markers=True)
+    plot_celestial_markers(visit=None, ax=ax, frame=frame, datetime=datetime, label_markers=True, npts=npts)
 
     # Optional, mark a circle at some specified sun pitch
     sun = coords.get_sun(datetime).transform_to(frame)
