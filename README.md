@@ -11,26 +11,22 @@ and the field of regard constraints, and which detector(s) will be used to take
 data.
 
 **Caveats, warnings, and disclaimers:** This is an unofficial tool provided on a best-effort basis.
-Coordinate transforms may not yet be precisely correct in all details. Some aspects of V to J frame
-transforms are not yet tracked in the SIAF PRD content.
-
-A difference in the assumed ephemeris for JWST can result in inconsistencies in
+Some coordinate transforms are somewhat simplified, and not precisely correct in all details. 
+The exact position of JWST in its orbit around L2 is not tracked with high precision since that
+is not needed for these plots.
+ A difference in the assumed ephemeris for JWST can result in inconsistencies in
 field of regard calculations. If this tool warns that a given visit may be out
 of the field of regard, take that with a grain of salt for now, and check with
 the real PPS experts for a more authoritative answer.
 
 
+Currently, some aspects of sun pitch and yaw calculations are not working and disabled,
+pending an update for compatibility with the changed API of ``jwst_gtvt``. Other aspects
+of plotting and functionality still work fine.
+
+
 Installation
 ------------
-
-
-**Requirements:**
-- numpy, astropy, matplotlib, etc
-- pysiaf: https://github.com/spacetelescope/pysiaf
-- jwst_gtvt: https://github.com/spacetelescope/jwst_gtvt
-
-_Note, an up-to-date dev version of pysiaf is required, including this PR recently merged: https://github.com/spacetelescope/pysiaf/pull/177_
-
 
 **Basic Installation**:
 
@@ -38,11 +34,12 @@ Install this repo:
 
     pip install git+https://github.com/spacetelescope/jwst_visit_viewer.git
 
-Install dependencies (assuming you already have the basics):
 
-    pip install git+https://github.com/spacetelescope/jwst_gtvt.git
+**Requirements:**
+- numpy, astropy, matplotlib, etc
+- pysiaf: https://github.com/spacetelescope/pysiaf
+- jwst_gtvt: https://github.com/spacetelescope/jwst_gtvt
 
-    pip install git+https://github.com/spacetelescope/pysiaf.git
 
 
 Usage Instructions

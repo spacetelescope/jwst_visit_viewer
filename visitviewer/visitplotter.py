@@ -673,7 +673,7 @@ def show_field_of_regard_ra_dec(visit, datetime=None, subplotspec=None, labelaxe
     return ax
 
 
-def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True, label_markers=False, npts=360*2+1):
+def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True, label_markers=False, npts=360+1):
     """Main routine to plot celestial markers for sun, target, and various circles
 
     Parameters
@@ -722,7 +722,7 @@ def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True
         for_edge = sun.directional_offset_by(pas, offset*u.deg)
         plot_coords_in_frame(for_edge, ax, frame,  marker='.',color='green', markersize=1, ls='none')
 
-    for offset in np.linspace(85, 135, 120):
+    for offset in np.linspace(85, 135, npts//3):
         for_circ = sun.directional_offset_by(pas, offset * u.deg)
         plot_coords_in_frame(for_circ, ax, frame, marker='o', color='#E5F2E5', markersize=1, ls='none', zorder=-30)
 
