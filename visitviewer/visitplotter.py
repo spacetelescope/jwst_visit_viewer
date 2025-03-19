@@ -12,21 +12,19 @@ import astropy.io.fits as fits
 import astropy.coordinates as coords
 import astropy.units as u
 import pysiaf
-import jwst_gtvt.find_tgt_info
-import jwst_gtvt.ephemeris_old2x as EPH
 import copy
 
 
 # Visit plotting tools
 
 # A note about interpretation of GSPA. This is subtle, and the implementation varies depending on PPS version.
-# OSS passes through the GSPA parameter to spacecraft ACS for slews. ACS does not utilize the V frame in its pointing control. 
-# - The GSPA parameter is interpreted as the PA of the FGS1 Ideal coordinate system ("FGS ics"), and transformed to the 
+# OSS passes through the GSPA parameter to spacecraft ACS for slews. ACS does not utilize the V frame in its pointing control.
+# - The GSPA parameter is interpreted as the PA of the FGS1 Ideal coordinate system ("FGS ics"), and transformed to the
 #   spacecraft J frame via the FGS_to_STA k-constant matrix. In so doing, the GSPA is interpreted as the PA of th FGS Yics
 #   angle *at the position of the guide star*
 # - Note that the FGS1 Yics differs from the V3 axis by ~ -1.25 degrees
 #
-# In PPS versions 14.14.1 and below, this was neglected and OPGS provides the computed V3PA at the guide star as the GSPA parameter. 
+# In PPS versions 14.14.1 and below, this was neglected and OPGS provides the computed V3PA at the guide star as the GSPA parameter.
 #   (incorrectly / inconsistently, resulting in unexpected attitudes)
 # In later versions, PPS applies the compensation and provides the FGS Y ideal PA, which spacecraft ACS can then transform to the J frame
 #
@@ -61,8 +59,8 @@ def retrieve_2mass_image(visit, ra=None, dec=None, verbose=True, redownload=Fals
     """Obtain from Aladin a 2MASS image for the pointing location of a JWST visit
 
     Uses HIPS2FITS service; see http://alasky.u-strasbg.fr/hips-image-services/hips2fits
-    
-    FITS files for the retrieved images are cached for re-use, in a subdirectory 
+
+    FITS files for the retrieved images are cached for re-use, in a subdirectory
     `image_cache` next to where this code is.
 
     Parameters
@@ -410,7 +408,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
 
     if visit._no_gspa_yoffset:
         plt.text(0.00, -0.035,
-                 f"Interpreting GSPA parameter like PPS$\leq$14.14.1:\nGSPA does not include FGS Yics rotation.",
+                 f"Interpreting GSPA parameter like PPS$\\leq$14.14.1:\nGSPA does not include FGS Yics rotation.",
                  color='orangered', transform=ax.transAxes, verticalalignment='top')
 
     # re-establish the axes limits
@@ -541,8 +539,12 @@ def plot_circle_coords(x1, x2, from_frame, to_frame, ax, **plot_kwargs):
     from_plane = coords.SkyCoord(x1, x2, unit='deg', frame=from_frame)
     return plot_coords_in_frame(from_plane, ax, to_frame, **plot_kwargs)
 
-def plot_coords_in_frame(skycoords, ax, to_frame, **plot_kwargs):
-    """ Plot in ICRS or Barycentric coordinates, with appropriate transformations
+def plot_coords_in_frame(skycoords, ax, to_frame, label=None, labelcolor='black', **plot_kwargs):
+    """ Plot in ICRS or Barycentric coordinates, with appropriate transformations.
+
+    Note this implicitly/automatically take care of flipping the sign of the X axis
+    to implement the astronomical convention of R.A. increasing to the left, which
+    is awkward to do in matplotlib map projections.
     """
     coords_in_frame = skycoords.transform_to(to_frame)
     # pull out what we want to plot
@@ -572,13 +574,13 @@ def show_field_of_regard_ecliptic(visit, datetime=None, projection='lambert', su
     """
 
     if datetime is None:
-        # What date/time are we generating this plot for? 
+        # What date/time are we generating this plot for?
         datetime = visit.time_early # astropy.time.Time.now()
 
 
     # Determine where the sun will be then.
     # NOTE - this is the apparent position as seen from Earth, and may be off by up to ~0.3 deg from the
-    # perspective of JWST in its large orbit around L2. This is not a high accuracy calculation. 
+    # perspective of JWST in its large orbit around L2. This is not a high accuracy calculation.
     sun = coords.get_sun(datetime).transform_to('geocentricmeanecliptic')
     center_longitude = sun.lon.radian+np.pi
     subplot_kwargs = {'projection': projection}
@@ -635,7 +637,7 @@ def show_field_of_regard_ecliptic(visit, datetime=None, projection='lambert', su
     #         transform=ax.transAxes, horizontalalignment='right')
 
     plt.title(f"JWST field of regard\non {datetime.to_value('iso',subfmt='date')}\n[Ecliptic coords]",)
-    
+
     # Plot all the markers
     plot_celestial_markers(visit, ax, 'geocentricmeanecliptic', show_sun=show_sun, datetime=datetime)
 
@@ -852,12 +854,12 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
                 label.set_rotation(40)
             ax.legend(loc='upper right', fontsize=8)
 
-    ax_pitch.set_title(f"Mean pitch: {vehicle_pitch.mean():.2f}$^\circ$, Roll range: {vehicle_roll[0]:.2f}$^\circ$ to {vehicle_roll[-1]:.2f}$^\circ$",
+    ax_pitch.set_title(f"Mean pitch: {vehicle_pitch.mean():.2f}$^\\circ$, Roll range: {vehicle_roll[0]:.2f}$^\\circ$ to {vehicle_roll[-1]:.2f}$^\\circ$",
                        fontweight='bold', fontsize=9, color='C0')
 
     if np.any( np.abs(vehicle_roll) > max_allowed_roll):
         plt.text(0.98, 0.1, 'WARNING! Vehicle roll may be outside of limit at some times?\n(IGNORE this warning; need to update with flight ephemeris)', color='red',
-                 #fontweight='bold', 
+                 #fontweight='bold',
                  horizontalalignment='right',fontsize=15,
                  transform=plt.gcf().transFigure)
 

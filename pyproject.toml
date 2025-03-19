@@ -4,8 +4,8 @@ version = '0.2.0'
 authors = [{name = "Marshall Perrin", email = "mperrin@stsci.edu"}]
 dependencies = [
     'matplotlib > 3',
-    'jwst_gtvt',
-    'pysiaf'
+    'jwst_gtvt >= 1.0',
+    'pysiaf >= 0.20.0'
 ]
 license = {file = "LICENSE.md"}
 readme = "README.md"
