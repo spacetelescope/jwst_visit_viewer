@@ -763,6 +763,8 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
         measured with respect to the +V2 axis (i.e. typically ranging from +5 to -45 degrees).
 
     """
+    import jwst_gtvt.jwst_tvt
+    #import jwst_gtvt.find_tgt_info
 
     if subplotspec_pitch is None or subplotspec_roll is None:
         fig, subplots = plt.subplots(nrows=2, figsize=(16,9))
@@ -793,9 +795,7 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
     #sun = astropy.coordinates.get_sun(times)
 
     # Load JWST ephemeris from jwst_gtvt
-    A_eph = EPH.Ephemeris(
-        os.path.join(os.path.dirname(os.path.abspath(jwst_gtvt.__file__)), "horizons_EM_jwst_wrt_sun_2020-2024.txt"),
-        False, verbose=False)
+    A_eph = jwst_gtvt.jwst_tvt.Ephemeris()
 
     v3pa_nominal = np.zeros(nt, float)
     max_allowed_roll = np.zeros(nt, float)
@@ -805,13 +805,17 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
     for i in range(nt):
         # the following all in radians, for compatibility with jwst_gtvt internals
         atime = times[i]
-        v3pa_nominal[i] = A_eph.normal_pa(atime.mjd, v1ra, v1dec)
-        # Determine apparent sun position at that time.
-        sun_ra, sun_dec = A_eph.sun_pos(atime.mjd)
+        try:
+            v3pa_nominal[i] = A_eph.normal_pa(atime.mjd, v1ra, v1dec)
+            # Determine apparent sun position at that time.
+            sun_ra, sun_dec = A_eph.sun_pos(atime.mjd)
 
-        sun_angle[i] = jwst_gtvt.find_tgt_info.angular_sep(sun_ra, sun_dec, v1ra, v1dec)
+            sun_angle[i] = jwst_gtvt.find_tgt_info.angular_sep(sun_ra, sun_dec, v1ra, v1dec)
 
-        max_allowed_roll[i] = jwst_gtvt.find_tgt_info.allowed_max_vehicle_roll(sun_ra, sun_dec, v1ra, v1dec)
+            max_allowed_roll[i] = jwst_gtvt.find_tgt_info.allowed_max_vehicle_roll(sun_ra, sun_dec, v1ra, v1dec)
+        except:
+            sun_angle[i] = np.nan
+            max_allowed_roll[i] = np.nan
 
     # convert to degrees
     sun_angle = np.rad2deg((sun_angle))
