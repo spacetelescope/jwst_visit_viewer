@@ -23,3 +23,10 @@ def test_plotter():
     result = visitviewer.view(example_files[0])
 
 
+def test_plot_field_of_regard_date():
+    import os
+    result = visitviewer.visitplotter.plot_field_of_regard_on_date('2024-12-25')
+    output_fn_name = 'jwst_field_of_regard_2024-12-25.png'
+    assert os.path.exists(output_fn_name)
+    os.remove(output_fn_name)
+

@@ -559,6 +559,10 @@ def plot_coords_in_frame(skycoords, ax, to_frame, **plot_kwargs):
     # don't let us make R.A. increase to the left
     ax.plot(-plot_x, plot_y, **plot_kwargs)
 
+    if label:
+        ax.text(-plot_x, plot_y, "\n"+label, color=labelcolor, horizontalalignment='center', verticalalignment='top', zorder=10)
+        #print(-plot_x, plot_y, label)
+
 
 
 def show_field_of_regard_ecliptic(visit, datetime=None, projection='lambert', subplotspec=None, show_sun=False):
@@ -640,7 +644,7 @@ def show_field_of_regard_ecliptic(visit, datetime=None, projection='lambert', su
 
 
 
-def show_field_of_regard_ra_dec(visit, datetime=None, subplotspec=None, labelaxes=False):
+def show_field_of_regard_ra_dec(visit, datetime=None, subplotspec=None, labelaxes=False, label_markers=False):
     """Plot celestial sphere in regular RA, Dec
 
     """
@@ -662,16 +666,16 @@ def show_field_of_regard_ra_dec(visit, datetime=None, subplotspec=None, labelaxe
     # Plot all the markers
     # Use GCRS coordinates, which is like ICRS but references to Earth; this only matters substantially for
     # the sun coordinates in this case.
-    plot_celestial_markers(visit, ax, 'gcrs', datetime=datetime)
+    plot_celestial_markers(visit, ax, 'gcrs', datetime=datetime, label_markers=label_markers)
 
     return ax
 
 
-def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True):
+def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True, label_markers=False):
     """Main routine to plot celestial markers for sun, target, and various circles
     """
 
-    if datetime is None:
+    if datetime is None and visit is not None:
         # What date/time are we generating this plot for?
         datetime = visit.time_early # astropy.time.Time.now()
 
@@ -683,14 +687,17 @@ def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True
     # Draw the sun, and anti-sun point
     antisun = sun.directional_offset_by(0, 180*u.deg)
     if show_sun: # it's less useful to show this in the lambert ecliptic proj
-        plot_coords_in_frame(sun, ax, frame,  marker='o', markersize=20, color='orange', markeredgecolor='orange', zorder=10)
-    plot_coords_in_frame(antisun, ax, frame,  marker='+', markersize=10, color='black', markeredgewidth=3,)
+        plot_coords_in_frame(sun, ax, frame,  marker='o', markersize=20, color='orange', markeredgecolor='orange', zorder=10,
+                             label="Sun" if label_markers else None)
+    plot_coords_in_frame(antisun, ax, frame,  marker='+', markersize=10, color='black', markeredgewidth=3,
+                         label='anti-Sun' if label_markers else None)
 
     # Draw galactic and ecliptic planes
     # JWST's CVZs are defined by the Barycentric version of the ecliptic plane.
-    plot_circle_coords(np.arange(361), np.zeros(361), 'galactic', frame, ax,
+    npts = 360*4+1
+    plot_circle_coords(np.linspace(0,360,npts), np.zeros(npts), 'galactic', frame, ax,
                        ls='none',marker='.', markersize=2, color='maroon', alpha=0.3)
-    plot_circle_coords(np.arange(361)-180, np.zeros(361), 'barycentricmeanecliptic', frame, ax,
+    plot_circle_coords(np.linspace(0,360,npts)-180, np.zeros(npts), 'barycentricmeanecliptic', frame, ax,
                        ls='none',marker='.', markersize=2, color='black', alpha=0.3)
     # Draw the CVZs
     for ecliptic_lat in [85, -85]:
@@ -701,37 +708,27 @@ def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True
     # Shade the allowed field of regard.
     # Given hassles with plotting filled shapes in map projections, a relatively straightforward way to do this
     # ends up being to rasterize a grid over the sky, and scatter plot those points densely
-    n = 180
-    lat, lon = np.meshgrid(np.linspace(-np.pi, np.pi, 2 * n), np.linspace(-np.pi / 2, np.pi / 2, n))
-    skymesh = astropy.coordinates.SkyCoord(lat, lon, frame=frame, unit='rad')
-    #field_of_regard_mask = (seps > 85 * astropy.units.deg) & (seps < 135 * astropy.units.deg)
+    #lat, lon = np.meshgrid(np.linspace(-np.pi, np.pi, 2*npts), np.linspace(-np.pi / 2, np.pi / 2, npts))
+    #skymesh = astropy.coordinates.SkyCoord(lat, lon, frame=frame, unit='rad')
 
-    pas = np.arange(360) * u.deg
-    for offset in [85, 145]:
+    pas = np.linspace(0,360, npts) * u.deg
+    for offset in [85, 135]:
         for_edge = sun.directional_offset_by(pas, offset*u.deg)
         plot_coords_in_frame(for_edge, ax, frame,  marker='.',color='green', markersize=1, ls='none')
-        
-    for offset in np.linspace(86, 144, 50):
+
+    for offset in np.linspace(85, 135, 120):
         for_circ = sun.directional_offset_by(pas, offset * u.deg)
         plot_coords_in_frame(for_circ, ax, frame, marker='o', color='#E5F2E5', markersize=1, ls='none', zorder=-30)
-    #
-    # if 0:
-    #     with warnings.catch_warnings():
-    #         # Temporarily ignore any benign warnings of math errors in the following call
-    #         warnings.simplefilter("ignore")
-    #         # Note, must flip sight on X coord given matplotlib convention vs. RA
-    #         if 'ecliptic' in frame:
-    #             plt.scatter(-lat[field_of_regard_mask], lon[field_of_regard_mask], color='#E5F2E5', zorder=-1000);
-    #         else:
-    #             plt.scatter(-skymesh[field_of_regard_mask].ra.wrap_at('180d').radian,
-    #                         skymesh[field_of_regard_mask].dec.radian, color='#E5F2E5', zorder=-1000);
 
     # Show the target pointing!
-    gs = coords.SkyCoord(visit.slew.GSRA, visit.slew.GSDEC, unit='deg', frame='icrs')
-    plot_coords_in_frame(gs, ax, frame,  marker='*',color='red', markersize=20,)
+    if visit is not None:
+        gs = coords.SkyCoord(visit.slew.GSRA, visit.slew.GSDEC, unit='deg', frame='icrs')
+        plot_coords_in_frame(gs, ax, frame,  marker='*',color='red', markersize=20,
+                             label='Target' if label_markers else None)
 
     gal_center = astropy.coordinates.SkyCoord(0, 0, unit='deg', frame='galactic').transform_to('icrs')
-    plot_coords_in_frame(gal_center, ax, frame, marker='o', markersize=5, color='maroon')
+    plot_coords_in_frame(gal_center, ax, frame, marker='o', markersize=5, color='maroon',
+                         label='galactic center' if label_markers else None, labelcolor='maroon',)
 
     # Extra markers to plot while debugging transforms
     #origin = coords.SkyCoord(0, 0, unit='deg', frame='icrs')
@@ -971,3 +968,113 @@ def mosaic_plot(visitlist, verbose=False, save=False, use_dss=False, no_gspa_yof
         if platform.system()=='Darwin':
             subprocess.run(["open", outname])
         return outname
+
+
+
+def plot_field_of_regard_on_date(date,
+                                 use_ecliptic_coords=False,
+                                 mark_sun_pitch=None,
+                                 label_circles=True, label_axes = True,
+                                 label_ram_wake=True,
+                                 figsize=(12, 6.75)):
+    """Plot JWST field of regard on a specified date.
+
+    Creates an all-sky plot in Mollweide projection, and annotates it with the
+    sun, several major celestial circles, and the JWST field of regard on that date.
+
+    Useful for stand-alone plots without any specific visit file yet.
+
+    Parameters
+    ----------
+    date : str or astropy.time.Time
+        Date, as "YYYY-MM-DD", or some other format convertable to an astropy Time object
+    use_ecliptic_coords : bool
+        Default is to plot in celestial coordinates (R.A., Dec). If this is set,
+        show the plot in ecliptic coordinates instead.
+    mark_sun_pitch : float
+        If set, draw a circle showing the annulus of the specified sun pitch.
+        e.g. mark_sun_pitch=-20 shows the peak power attitude locations.
+        Note this uses the ACS sign convention in which the field of regard goes from +5 to -45.
+    label_circles : bool
+        Add text labels for ecliptic, galactic, and cvz marker circles
+    label_axes : bool
+        Add text labels for RA, Dec axes
+    label_ram_wake : bool
+        Add text labels for ram and wake directions
+    figsize : tuple of floats
+        Figure size for Matplotlib
+
+    """
+
+    plt.figure(figsize=figsize)
+
+    datetime = astropy.time.Time(date)
+
+    if use_ecliptic_coords:
+        frame = 'geocentricmeanecliptic'
+        frame_name, xlabel, ylabel = 'Ecliptic', "Ecliptic Longitude", "Ecliptic Latitude"
+        yticklabels = [f'{d}$^\\circ$' for d in [120, 60, 0, 300, 240, 180]]
+    else:
+        # Use GCRS coordinates, which is like ICRS but references to Earth; this only matters substantially for
+        # the sun coordinates in this case.
+        frame = 'gcrs'
+        frame_name, xlabel, ylabel = 'ICRS Equatorial', "Right Ascension", "Declination"
+        yticklabels = ['8$^h$', '4$^h$', '0$^h$', '20$^h$', '16$^h$', '12$^h$']
+
+    # Setup a map in Mollweide projection and label for RA and Dec.
+    ax = plt.gcf().add_subplot( projection='mollweide')
+    ax.set_title(f"All Sky\n[{frame_name} coords]\n")
+    if label_axes:
+        ax.set_ylabel(ylabel)
+        ax.set_xlabel(xlabel)
+
+    # Replace the standard x ticks (longitude) with R.A., and include sign flip so R.A. increases to left
+
+    plt.xticks(ticks=np.radians([-120, -60, 0, 60, 120, 180]),
+               labels=yticklabels)
+    ax.grid(True)
+
+
+    # Plot all the markers for sun, ecliptic plane, galactic plane
+    plot_celestial_markers(visit=None, ax=ax, frame=frame, datetime=datetime, label_markers=True)
+
+    # Optional, mark a circle at some specified sun pitch
+    sun = coords.get_sun(datetime).transform_to(frame)
+    if mark_sun_pitch:
+        pas = np.linspace(0,360, 721) * u.deg
+        for offset in [90 - mark_sun_pitch]:
+            pitch_circle = sun.directional_offset_by(pas, offset*u.deg)
+            plot_coords_in_frame(pitch_circle, ax, frame,  marker='.',color='magenta', markersize=1, ls='none')
+        # Call again for just a single point to add a label.
+        plot_coords_in_frame(pitch_circle[200], ax, frame,  marker='.',color='magenta', markersize=1,
+                             ls='none', label=f'Sun Pitch {mark_sun_pitch}', labelcolor='magenta')
+
+    # Optional, add additional text labels for features
+    if label_circles:
+        for cvz_sign in [1, -1]:
+            cvz = coords.SkyCoord(0, 90*cvz_sign, unit=u.deg, frame='barycentricmeanecliptic')
+            plot_coords_in_frame(cvz, ax, frame, marker='none', label='CVZ', labelcolor='blue')
+        # TODO this next bit is a bit awkward, with manual label positioning per coordinate frame
+        if use_ecliptic_coords:
+            ax.text(np.pi/8, 0.02,'Ecliptic', rotation=0)
+            ax.text(np.pi/4, np.pi*0.18,'Galactic plane', color='maroon', rotation=-35)
+        else:
+            ax.text(np.pi/8, -np.pi/15,'Ecliptic', rotation=-22)
+            ax.text(np.pi/6, np.pi*0.2,'Galactic plane', color='maroon', rotation=-40)
+
+
+    # Mark the ram and wake directions.
+    if label_ram_wake:
+        sun_ecliptic = sun.transform_to('geocentricmeanecliptic')
+        for ramwake_label, ramwake_offset in (('Ram', -90), ('Wake', 90)):
+            ramwake_dir = coords.SkyCoord(sun_ecliptic.lon+ramwake_offset*u.deg, sun_ecliptic.lat,
+                                          frame='geocentricmeanecliptic').transform_to(frame)
+            plot_coords_in_frame(ramwake_dir, ax, frame,  marker='none',
+                                 markersize=20, color='orange', markeredgecolor='darkorange', zorder=10,
+                                 label=ramwake_label + "\ndirection", labelcolor='darkorange')
+
+    plt.suptitle(f"JWST Field of Regard on {datetime.iso[0:10]}")
+    plt.tight_layout()
+    fn = f'jwst_field_of_regard_{datetime.iso[0:10]}{"_ecliptic" if use_ecliptic_coords else ""}.png'
+    plt.savefig(fn, dpi=150)
+    print(f"Plot saved to {fn}")

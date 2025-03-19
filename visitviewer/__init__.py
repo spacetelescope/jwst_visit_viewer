@@ -62,7 +62,12 @@ def main():
     parser.add_argument('-c', '--center',  help='Center plot based on some other visit, instead of this one. Use this to get consistent plots for a set of related visits')
     parser.add_argument('-o', '--output_dir',  help='Output PDF to this directory (rather than current working dir)')
     parser.add_argument('-v', '--verbose', action='store_true', help='Be more verbose for debugging')
+    parser.add_argument('-D', '--Date', action='store', help='Plot field of regard on a specified date (this does not use any visit file)')
     args = parser.parse_args()
+
+    if args.Date:
+        visitplotter.plot_field_of_regard_on_date(args.Date)
+        return
 
     if args.mosaic and len(args.filename) > 1:
         mosaic_view(args.filename, use_dss=args.dss, no_gspa_yoffset=args.no_gspa_yoffset, output_dir=args.output_dir,

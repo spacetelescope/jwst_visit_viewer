@@ -15,7 +15,7 @@ import warnings
 # --- Part 1: Load and parse visit file information
 
 
-iswhitespace = lambda x: re.fullmatch("\s+", x) is not None
+iswhitespace = lambda x: re.fullmatch("\\s+", x) is not None
 
 
 # Some lightweight classes for parsed information
