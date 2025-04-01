@@ -539,7 +539,7 @@ def plot_circle_coords(x1, x2, from_frame, to_frame, ax, **plot_kwargs):
     from_plane = coords.SkyCoord(x1, x2, unit='deg', frame=from_frame)
     return plot_coords_in_frame(from_plane, ax, to_frame, **plot_kwargs)
 
-def plot_coords_in_frame(skycoords, ax, to_frame, label=None, labelcolor='black', **plot_kwargs):
+def plot_coords_in_frame(skycoords, ax, to_frame, label=None, labelcolor='black', scatter=False, **plot_kwargs):
     """ Plot in ICRS or Barycentric coordinates, with appropriate transformations.
 
     Note this implicitly/automatically take care of flipping the sign of the X axis
@@ -559,7 +559,8 @@ def plot_coords_in_frame(skycoords, ax, to_frame, label=None, labelcolor='black'
 
     # note we MUST FLIP THE SIGN FOR X, since matplotlib map projections
     # don't let us make R.A. increase to the left
-    ax.plot(-plot_x, plot_y, **plot_kwargs)
+    plot_function = ax.scatter if scatter else ax.plot
+    plot_function(-plot_x, plot_y, **plot_kwargs)
 
     if label:
         ax.text(-plot_x, plot_y, "\n"+label, color=labelcolor, horizontalalignment='center', verticalalignment='top', zorder=10)
@@ -986,7 +987,8 @@ def plot_field_of_regard_on_date(date,
                                  mark_sun_pitch=None,
                                  label_circles=True, label_axes = True,
                                  label_ram_wake=True,
-                                 figsize=(12, 6.75)):
+                                 figsize=(12, 6.75),
+                                 save=True):
     """Plot JWST field of regard on a specified date.
 
     Creates an all-sky plot in Mollweide projection, and annotates it with the
@@ -1083,9 +1085,26 @@ def plot_field_of_regard_on_date(date,
             plot_coords_in_frame(ramwake_dir, ax, frame,  marker='none',
                                  markersize=20, color='orange', markeredgecolor='darkorange', zorder=10,
                                  label=ramwake_label + "\ndirection", labelcolor='darkorange')
+            if ramwake_label == 'Ram':
+                # Plot MAZ boundary
+                pas = np.linspace(0,360, 361) * u.deg
+                maz_circle = ramwake_dir.transform_to(frame).directional_offset_by(pas, 10*u.deg)
+                print(ramwake_dir)
+                plot_coords_in_frame(maz_circle, ax, frame,  marker='.',
+                                     markersize=20, color='darkorange', zorder=1)
+
+
+                maz_dist_sun = maz_circle.separation(sun_ecliptic)
+                print(maz_dist_sun)
+                maz_circle_in_for = maz_circle[maz_dist_sun>=85*u.deg]
+                plot_coords_in_frame(maz_circle_in_for, ax, frame,  marker='.',
+                                     markersize=20, color='darkorange', zorder=1)
+
 
     plt.suptitle(f"JWST Field of Regard on {datetime.iso[0:10]}")
     plt.tight_layout()
-    fn = f'jwst_field_of_regard_{datetime.iso[0:10]}{"_ecliptic" if use_ecliptic_coords else ""}.png'
-    plt.savefig(fn, dpi=150)
-    print(f"Plot saved to {fn}")
+    if save:
+        fn = f'jwst_field_of_regard_{datetime.iso[0:10]}{"_ecliptic" if use_ecliptic_coords else ""}.png'
+        plt.savefig(fn, dpi=150)
+        print(f"Plot saved to {fn}")
+    return ax
