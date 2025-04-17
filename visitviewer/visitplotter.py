@@ -990,6 +990,7 @@ def plot_field_of_regard_on_date(date,
                                  label_ram_wake=True,
                                  mark_maz=False,
                                  figsize=(12, 6.75),
+                                 point_density=4,
                                  save=True):
     """Plot JWST field of regard on a specified date.
 
@@ -1017,11 +1018,14 @@ def plot_field_of_regard_on_date(date,
         Add text labels for ram and wake directions
     figsize : tuple of floats
         Figure size for Matplotlib
+    point_density : int
+        Number of scatter point plots per degree. Increase this to get a smoother plot, at a cost of slightly longer runtime to plot.
+
 
     """
 
     plt.figure(figsize=figsize)
-    npts = 360*4+1  # Higher than the default, for nice smooth plot output
+    npts = 360*point_density+1  # Higher than the default, for nice smooth plot output
 
     datetime = astropy.time.Time(date)
 
@@ -1058,7 +1062,7 @@ def plot_field_of_regard_on_date(date,
     if isinstance(mark_sun_pitch, bool):
         raise ValueError("The mark_sun_pitch parameter should be a numeric value between 5 and -45 degrees, not a boolean True/False.")
     if mark_sun_pitch is not None:
-        pas = np.linspace(0,360, 721) * u.deg
+        pas = np.linspace(0,360, npts) * u.deg
         for offset in [90 - mark_sun_pitch]:
             pitch_circle = sun.directional_offset_by(pas, offset*u.deg)
             plot_coords_in_frame(pitch_circle, ax, frame,  marker='.',color='magenta', markersize=1, ls='none')
@@ -1091,7 +1095,7 @@ def plot_field_of_regard_on_date(date,
                                  label=ramwake_label + "\ndirection", labelcolor='darkorange')
             if ramwake_label == 'Ram' and mark_maz:
                 # Plot MAZ boundary
-                pas = np.linspace(0,360, 721) * u.deg
+                pas = np.linspace(0,360, npts) * u.deg
                 with warnings.catch_warnings():
                     # ignore an astropy NonRotationTransformationWarning, which comes up for some reason
                     warnings.simplefilter('ignore')
@@ -1103,8 +1107,10 @@ def plot_field_of_regard_on_date(date,
                                         markersize=2,  color='darkorange', zorder=1, linestyle='none')
 
                     # some jumping through hoops to find a nice place to put the text label
-                    better_side = np.abs(maz_circle.dec) < 45*u.deg
-                    maz_circ_midpoint = np.argmin(np.abs(maz_dist_sun[better_side] - 110*u.deg))
+                    vert_coord = maz_circle.lat if use_ecliptic_coords else maz_circle.dec
+                    better_side = np.abs(vert_coord) < 45*u.deg
+
+                    maz_circ_midpoint = np.argmin(np.abs(maz_dist_sun[better_side] - 120*u.deg))
                     plot_coords_in_frame(maz_circle[better_side][maz_circ_midpoint], ax, frame,  marker='none',
                                      markersize=1, color='orange', markeredgecolor='darkorange', zorder=10,
                                      label="MAZ\nboundary", labelcolor='darkorange')
