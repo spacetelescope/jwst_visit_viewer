@@ -1,6 +1,7 @@
 import os
 import platform
 import subprocess
+import warnings
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -987,6 +988,7 @@ def plot_field_of_regard_on_date(date,
                                  mark_sun_pitch=None,
                                  label_circles=True, label_axes = True,
                                  label_ram_wake=True,
+                                 mark_maz=False,
                                  figsize=(12, 6.75),
                                  save=True):
     """Plot JWST field of regard on a specified date.
@@ -1053,7 +1055,9 @@ def plot_field_of_regard_on_date(date,
 
     # Optional, mark a circle at some specified sun pitch
     sun = coords.get_sun(datetime).transform_to(frame)
-    if mark_sun_pitch:
+    if isinstance(mark_sun_pitch, bool):
+        raise ValueError("The mark_sun_pitch parameter should be a numeric value between 5 and -45 degrees, not a boolean True/False.")
+    if mark_sun_pitch is not None:
         pas = np.linspace(0,360, 721) * u.deg
         for offset in [90 - mark_sun_pitch]:
             pitch_circle = sun.directional_offset_by(pas, offset*u.deg)
@@ -1085,20 +1089,27 @@ def plot_field_of_regard_on_date(date,
             plot_coords_in_frame(ramwake_dir, ax, frame,  marker='none',
                                  markersize=20, color='orange', markeredgecolor='darkorange', zorder=10,
                                  label=ramwake_label + "\ndirection", labelcolor='darkorange')
-            if ramwake_label == 'Ram':
+            if ramwake_label == 'Ram' and mark_maz:
                 # Plot MAZ boundary
-                pas = np.linspace(0,360, 361) * u.deg
-                maz_circle = ramwake_dir.transform_to(frame).directional_offset_by(pas, 10*u.deg)
-                print(ramwake_dir)
-                plot_coords_in_frame(maz_circle, ax, frame,  marker='.',
-                                     markersize=20, color='darkorange', zorder=1)
+                pas = np.linspace(0,360, 721) * u.deg
+                with warnings.catch_warnings():
+                    # ignore an astropy NonRotationTransformationWarning, which comes up for some reason
+                    warnings.simplefilter('ignore')
+                    maz_circle = ramwake_dir.transform_to(frame).directional_offset_by(pas, 60*u.deg)
+                    maz_dist_sun = sun_ecliptic.separation(maz_circle)
+                    # limit to the part of the MAZ circle boundary that is within the FOR
+                    maz_circle_in_for = maz_circle[(maz_dist_sun>=85*u.deg) & (maz_dist_sun<135*u.deg)]
+                    plot_coords_in_frame(maz_circle_in_for, ax, frame,  marker='.',
+                                        markersize=2,  color='darkorange', zorder=1, linestyle='none')
+
+                    # some jumping through hoops to find a nice place to put the text label
+                    better_side = np.abs(maz_circle.dec) < 45*u.deg
+                    maz_circ_midpoint = np.argmin(np.abs(maz_dist_sun[better_side] - 110*u.deg))
+                    plot_coords_in_frame(maz_circle[better_side][maz_circ_midpoint], ax, frame,  marker='none',
+                                     markersize=1, color='orange', markeredgecolor='darkorange', zorder=10,
+                                     label="MAZ\nboundary", labelcolor='darkorange')
 
 
-                maz_dist_sun = maz_circle.separation(sun_ecliptic)
-                print(maz_dist_sun)
-                maz_circle_in_for = maz_circle[maz_dist_sun>=85*u.deg]
-                plot_coords_in_frame(maz_circle_in_for, ax, frame,  marker='.',
-                                     markersize=20, color='darkorange', zorder=1)
 
 
     plt.suptitle(f"JWST Field of Regard on {datetime.iso[0:10]}")
