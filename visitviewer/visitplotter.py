@@ -376,7 +376,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
             guide_det_info = f", on FGS{fgs_detector}" if single_guider else ", G1 or G2"
 
         for gs_id, gs in enumerate(visit.guide_activities):
-            if gs.args[1]=='FGSVERMAIN': continue
+            if gs.args[1] in ('FGSVERMAIN', 'FGSMTMAIN'): continue   # no guide star ID info for these
 
 
             # For each FGSMAIN call, work out the attitude matrix for the ID attitude:
@@ -506,7 +506,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
             transform=ax.transAxes, fontsize=12, verticalalignment='top')
     if len(mosaic_pos) > 0:
         mosaic_pos = np.asarray(mosaic_pos)
-        plt.text(0.03, 0.95, f"with {len(mosaic_pos)} mosaic pointings, spanning {np.ptp(mosaic_pos[:,0]):.1f}, {np.ptp(mosaic_pos[:,1]):.1f} arcsec in FGS X,Y", color='cyan', fontweight='bold',
+        plt.text(0.03, 0.90, f"with {len(mosaic_pos)} mosaic pointings, spanning {np.ptp(mosaic_pos[:,0]):.1f}, {np.ptp(mosaic_pos[:,1]):.1f} arcsec in FGS X,Y", color='cyan', fontweight='bold',
                  transform=ax.transAxes, fontsize=11, verticalalignment='top')
     template_ypos = 0.92 if len(visit.template) > 35 else 0.955   # leave room for survey label; avoid overlap for very long names
     plt.text(0.98, template_ypos, f"Template = {visit.template}", color='white',
@@ -863,6 +863,37 @@ def plot_celestial_markers(visit, ax, frame='gcrs', datetime=None, show_sun=True
     #two = coords.SkyCoord(-30, 0, unit='deg', frame='icrs')
     #plot_coords_in_frame(two, ax, frame,  marker='^',color='darkgreen', markersize=20,)
 
+def _get_sun_position(times):
+    """Sun RA, Dec (radians) as seen from JWST at the given astropy Times.
+
+    Uses the JWST ephemeris from jwst_gtvt (daily samples, interpolated). If that is not
+    available (e.g. no network, or dates outside the ephemeris range such as pre-launch
+    rehearsals), falls back to the geocentric sun position from astropy, which is a
+    good approximation as JWST is near Sun-Earth L2.
+
+    Returns sun_ra, sun_dec, and a jwst_gtvt Ephemeris object (for its geometry helper methods).
+    """
+    import jwst_gtvt.jwst_tvt
+    from astropy.time import Time
+
+    mjd = times.mjd
+    try:
+        eph = jwst_gtvt.jwst_tvt.Ephemeris(start_date=Time(np.floor(mjd.min()) - 1, format='mjd'),
+                                           end_date=Time(np.ceil(mjd.max()) + 1, format='mjd'))
+        df = eph.sun_position_coordinates(eph.sun_position_vectors(eph.dataframe))
+        df = df.dropna(subset=['coord1', 'coord2'])   # first ephemeris row can be NaN
+        sun_ra = np.interp(mjd, df['MJD'], np.unwrap(df['coord1'].values))
+        sun_dec = np.interp(mjd, df['MJD'], df['coord2'].values)
+        return sun_ra % (2 * np.pi), sun_dec, eph
+    except (Exception, SystemExit) as err:   # Ephemeris raises SystemExit for out-of-range dates
+        warnings.warn(f"Could not use JWST ephemeris for sun position ({type(err).__name__}: {err}); "
+                      "using approximate geocentric sun position instead.")
+        sun = astropy.coordinates.get_sun(times)   # geocentric (GCRS) direction; do not transform to ICRS, which would mix in barycentric offsets
+        # Ephemeris class is only needed here for its pure-geometry helper methods, so skip its (network-using) __init__
+        eph = jwst_gtvt.jwst_tvt.Ephemeris.__new__(jwst_gtvt.jwst_tvt.Ephemeris)
+        return sun.ra.rad, sun.dec.rad, eph
+
+
 def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
     """ Plot pitch and roll relative to the sun
 
@@ -882,9 +913,6 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
         measured with respect to the +V2 axis (i.e. typically ranging from +5 to -45 degrees).
 
     """
-    import jwst_gtvt.jwst_tvt
-    #import jwst_gtvt.find_tgt_info
-
     if subplotspec_pitch is None or subplotspec_roll is None:
         fig, subplots = plt.subplots(nrows=2, figsize=(16,9))
         ax_pitch, ax_roll = subplots
@@ -911,35 +939,22 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
     v1dec = np.deg2rad(v1dec)
 
 
-    #sun = astropy.coordinates.get_sun(times)
+    # Sun position at each time, in radians
+    sun_ra, sun_dec, A_eph = _get_sun_position(times)
 
-    # Load JWST ephemeris from jwst_gtvt
-    A_eph = jwst_gtvt.jwst_tvt.Ephemeris()
+    # Sun separation from V1, and nominal V3PA (-V3 pointed towards the sun), following jwst_gtvt conventions
+    sun_angle = np.array([A_eph.angular_sep(ra_i, dec_i, v1ra, v1dec) for ra_i, dec_i in zip(sun_ra, sun_dec)])
+    sun_pa_y = np.cos(sun_dec) * np.sin(sun_ra - v1ra)
+    sun_pa_x = np.sin(sun_dec) * np.cos(v1dec) - np.cos(sun_dec) * np.sin(v1dec) * np.cos(sun_ra - v1ra)
+    v3pa_nominal = np.arctan2(sun_pa_y, sun_pa_x) + np.pi
 
-    v3pa_nominal = np.zeros(nt, float)
-    max_allowed_roll = np.zeros(nt, float)
-    sun_angle = np.zeros(nt, float)
-
-
-    for i in range(nt):
-        # the following all in radians, for compatibility with jwst_gtvt internals
-        atime = times[i]
-        try:
-            v3pa_nominal[i] = A_eph.normal_pa(atime.mjd, v1ra, v1dec)
-            # Determine apparent sun position at that time.
-            sun_ra, sun_dec = A_eph.sun_pos(atime.mjd)
-
-            sun_angle[i] = jwst_gtvt.find_tgt_info.angular_sep(sun_ra, sun_dec, v1ra, v1dec)
-
-            max_allowed_roll[i] = jwst_gtvt.find_tgt_info.allowed_max_vehicle_roll(sun_ra, sun_dec, v1ra, v1dec)
-        except:
-            sun_angle[i] = np.nan
-            max_allowed_roll[i] = np.nan
+    max_allowed_roll = np.array([A_eph.allowed_max_vehicle_roll(ra_i, dec_i, v1ra, v1dec)
+                                 for ra_i, dec_i in zip(sun_ra, sun_dec)])
 
     # convert to degrees
-    sun_angle = np.rad2deg((sun_angle))
-    max_allowed_roll = np.rad2deg((max_allowed_roll))
-    v3pa_nominal = np.rad2deg((v3pa_nominal))
+    sun_angle = np.rad2deg(sun_angle)
+    max_allowed_roll = np.rad2deg(max_allowed_roll)
+    v3pa_nominal = np.rad2deg(v3pa_nominal) % 360
 
     vehicle_pitch = sun_angle - 90
 
@@ -988,7 +1003,7 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
                        fontweight='bold', fontsize=9, color='C0')
 
     if np.any( np.abs(vehicle_roll) > max_allowed_roll):
-        plt.text(0.98, 0.1, 'WARNING! Vehicle roll may be outside of limit at some times?\n(IGNORE this warning; need to update with flight ephemeris)', color='red',
+        plt.text(0.98, 0.1, 'WARNING! Vehicle roll may be outside of limit at some times in the visit window', color='red',
                  #fontweight='bold',
                  horizontalalignment='right',fontsize=15,
                  transform=plt.gcf().transFigure)

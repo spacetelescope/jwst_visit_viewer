@@ -356,7 +356,8 @@ class VisitFileContents(object):
         # If we're guiding, that aperture counts too
         if self.slew.GUIDEMODE != 'COARSE':
             for activity in self.guide_activities:
-                main_apertures.append(f"FGS{activity.DETECTOR[-1]}_FULL_OSS")
+                detector = getattr(activity, 'DETECTOR', self.slew.DETECTOR)   # moving target FGSMTMAIN lacks DETECTOR
+                main_apertures.append(f"FGS{detector[-1]}_FULL_OSS")
 
         # eliminate duplicates
         main_apertures = list(set(main_apertures))
