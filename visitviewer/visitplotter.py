@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 from urllib.parse import quote
-import astropy, astropy.wcs, astropy.visualization
+import astropy, astropy.wcs, astropy.visualization, astropy.utils.data, astropy.stats
 import astropy.io.fits as fits
 import astropy.coordinates as coords
 import astropy.units as u
@@ -34,6 +34,10 @@ import copy
 PROGRAMS_WITH_SEGMENT_GUIDING = [1410, 1141, 1143, 1148, 1150, 1151, 1153, 1158,  # flight programs, not yet a complete list
                                   710,  741,  743,  # rehearsal programs
                                   646]  # WF Guiding rehearsal program
+
+
+HIPS2FITS_URL = 'https://alasky.cds.unistra.fr/hips-image-services/hips2fits'   # CDS Aladin
+DSS_URL = 'https://archive.stsci.edu/cgi-bin/dss_search'                        # STScI/MAST DSS
 
 
 def get_image_cache_dir():
@@ -97,16 +101,127 @@ def retrieve_2mass_image(visit, ra=None, dec=None, verbose=True, redownload=Fals
 
         # optional / TBD - add PA into this query?
         # rotation_angle=90.0
-        url = f'http://alasky.u-strasbg.fr/hips-image-services/hips2fits?hips={quote(hips_catalog)}&width={width}&height={height}&fov={fov}&projection=TAN&coordsys=icrs&ra={ra}&dec={dec}'
+        url = f'{HIPS2FITS_URL}?hips={quote(hips_catalog)}&width={width}&height={height}&fov={fov}&projection=TAN&coordsys=icrs&ra={ra}&dec={dec}'
         if verbose:
             print(f"Retrieving 2MASS image from Aladin near ra={ra} & dec={dec}...")
 
-        with fits.open(url) as hdu:
-            hdu.writeto(img_fn, overwrite=True)
-            if verbose:
-                print(f"Retrieved 2MASS image from Aladin and saved to {img_fn}")
+        _download_fits(url, img_fn)
+        if verbose:
+            print(f"Retrieved 2MASS image from Aladin and saved to {img_fn}")
     hdu = fits.open(img_fn)
+    hdu[0].header['BKGDLBL'] = f'2MASS {filter}-band'  # in-memory label, used for plot annotation
     return hdu
+
+
+def _download_fits(url, output_filename, timeout=30):
+    """Download a FITS file to the given filename, validating that the result really is FITS.
+
+    Raises an exception on any failure (network error, HTML error page returned by a down server, etc.)
+    and never leaves a partial or invalid file at output_filename.
+    """
+    tmp_fn = astropy.utils.data.download_file(url, cache=False, timeout=timeout)
+    try:
+        with fits.open(tmp_fn) as hdu:
+            hdu.verify('exception')
+            hdu.writeto(output_filename, overwrite=True)
+    finally:
+        os.remove(tmp_fn)
+
+
+def retrieve_dss_image(visit, ra=None, dec=None, verbose=True, redownload=False, fov=0.35):
+    """Obtain a Digitized Sky Survey image for the pointing location of a JWST visit
+
+    Uses the STScI/MAST DSS server, which is independent of the CDS/Aladin servers used for 2MASS.
+    Images are cached the same way as for `retrieve_2mass_image`.
+
+    Parameters
+    ----------
+    visit : VisitFileContents object
+        Representation of some JWST visit file
+    fov : float
+        Field of view in degrees (square)
+    """
+    if ra is None and dec is None:
+        ra = visit.slew.GSRA
+        dec = visit.slew.GSDEC
+
+    visitname = os.path.splitext(os.path.basename(visit.filename))[0]
+    suffix = '' if fov == 0.35 else f'_fov{fov}'
+    img_fn = os.path.join(get_image_cache_dir(), f'img_dss_{visitname}{suffix}.fits')
+
+    if not os.path.exists(img_fn) or redownload:
+        size_arcmin = fov * 60
+        url = (f'{DSS_URL}?v=poss2ukstu_red&r={ra}&d={dec}&e=J2000&h={size_arcmin}&w={size_arcmin}'
+               f'&f=fits&c=none&fov=NONE&v3=')
+        if verbose:
+            print(f"Retrieving DSS image from STScI/MAST near ra={ra} & dec={dec}...")
+        _download_fits(url, img_fn)
+        if verbose:
+            print(f"Retrieved DSS image and saved to {img_fn}")
+    hdu = fits.open(img_fn)
+    hdu[0].header['BKGDLBL'] = 'DSS2 red band'
+    return hdu
+
+
+def make_blank_image(ra, dec, fov=0.35, npix=1024):
+    """Make a placeholder blank image (HDUList) with a valid north-up TAN WCS, used when no
+    background image can be retrieved. Header keyword NOIMAGE is set True to flag this."""
+    wcs = astropy.wcs.WCS(naxis=2)
+    wcs.wcs.ctype = ['RA---TAN', 'DEC--TAN']
+    wcs.wcs.crval = [float(ra), float(dec)]
+    wcs.wcs.crpix = [npix / 2 + 0.5, npix / 2 + 0.5]
+    wcs.wcs.cdelt = [-fov / npix, fov / npix]
+    wcs.wcs.cunit = ['deg', 'deg']
+    header = wcs.to_header()
+    header['NOIMAGE'] = (True, 'No background image could be retrieved')
+    return fits.HDUList([fits.PrimaryHDU(data=np.zeros((npix, npix)), header=header)])
+
+
+def get_background_image(visit, ra, dec, use_dss=False, verbose=False, fov=0.35):
+    """Retrieve a background sky image, trying the preferred survey first, then the other one,
+    and finally falling back to a blank placeholder image if all servers fail.
+
+    This lets the rest of the plot (apertures, field of regard, etc.) still be made when
+    image servers are down.
+    """
+    retrievers = [('DSS', retrieve_dss_image), ('2MASS', retrieve_2mass_image)]
+    if not use_dss:
+        retrievers.reverse()
+
+    for name, func in retrievers:
+        try:
+            return func(visit, ra=ra, dec=dec, verbose=verbose, fov=fov)
+        except Exception as err:
+            warnings.warn(f"Could not retrieve {name} background image: {type(err).__name__}: {err}")
+
+    warnings.warn("No background image could be retrieved from any server; plotting without a background image.")
+    return make_blank_image(ra, dec, fov=fov)
+
+
+def show_background_image(img_hdu):
+    """Display a background image on the current axes, or a note if it is a blank placeholder"""
+    if img_hdu[0].header.get('NOIMAGE', False):
+        plt.imshow(img_hdu[0].data, cmap='gray', vmin=0, vmax=1, origin='lower', zorder=-50)
+        plt.text(0.5, 0.5, "Background image unavailable\n(image servers not reachable)",
+                 color='orange', ha='center', va='center', transform=plt.gca().transAxes, fontsize=12)
+        return
+    if str(img_hdu[0].header.get('BKGDLBL', '')).startswith('DSS'):
+        # DSS has a large background pedestal and saturated stars, so set the black point from the
+        # measured sky background and noise rather than from the image minimum.
+        _, median, sigma = astropy.stats.sigma_clipped_stats(img_hdu[0].data)
+        norm = astropy.visualization.ImageNormalize(img_hdu[0].data,
+                          interval=astropy.visualization.ManualInterval(
+                              median - 1 * sigma, np.percentile(img_hdu[0].data, 99.9)),
+                          stretch=astropy.visualization.AsinhStretch(a=0.1))
+    else:
+        norm = astropy.visualization.ImageNormalize(img_hdu[0].data,
+                          interval=astropy.visualization.PercentileInterval(99.99),
+                      stretch=astropy.visualization.AsinhStretch(a=0.001))
+    plt.imshow(img_hdu[0].data, cmap='magma', norm=norm, origin='lower',
+               zorder=-50)  # negative zorder to be below pysiaf aperture fill zorder
+    plt.text(0.99, 0.99, img_hdu[0].header.get('BKGDLBL', 'unknown survey'),
+             color='white', ha='right', va='top', transform=plt.gca().transAxes, fontsize=9,
+             bbox=dict(facecolor='black', alpha=0.5, edgecolor='none', pad=2))
 
 
 def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center_visit=None):
@@ -140,16 +255,25 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
     v1pv3c = coords.SkyCoord(v1pv3_ra, v1pv3_dec, unit='deg', frame='icrs')
     v3pa_at_v1 = v1c.position_angle(v1pv3c).deg
 
+    # Compute V3PA at science aperture PA - right now hard coded to NIRCam all
+    sci_aperture = pysiaf.Siaf('NIRCam').apertures['NRCALL_FULL']
+    sci_aperture.set_attitude_matrix(attmat)
+    sci_aper_ra, sci_aper_dec = sci_aperture.tel_to_sky(0,0)        # RA, Dec of V1 axis reference location
+    sci_aper_pv3_ra, sci_aper_pv3_dec = sci_aperture.tel_to_sky(0,1)  # Will use to compute V3PA at V1 axis reference location
+    sci_aper_c = coords.SkyCoord(sci_aper_ra, sci_aper_dec, unit='deg', frame='icrs')
+    sci_aper_pv3c = coords.SkyCoord(sci_aper_pv3_ra, sci_aper_pv3_dec, unit='deg', frame='icrs')
+    v3pa_at_sci_aper = sci_aper_c.position_angle(sci_aper_pv3c).deg
+    print(f"V3PA at Science aperture {sci_aperture.AperName} is {v3pa_at_sci_aper:.3f}")
+
+
+
     # Compute RA, Dec of the J frame axis
     jframe_aperture = SIAFS['FGS'].apertures['J-FRAME']
     jframe_aperture.set_attitude_matrix(attmat)
     j_ra, j_dec = jframe_aperture.idl_to_sky(0,0)        # RA, Dec of V1 axis reference location
 
     image_visit = center_visit_parsed if center_visit else visit
-    if use_dss:
-        img_hdu = retrieve_dss_image(image_visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
-    else:
-        img_hdu = retrieve_2mass_image(image_visit, ra = mcf_ra, dec=mcf_dec, verbose=verbose)
+    img_hdu = get_background_image(image_visit, ra=mcf_ra, dec=mcf_dec, use_dss=use_dss, verbose=verbose)
 
     wcs = astropy.wcs.WCS(img_hdu[0].header)
 
@@ -160,12 +284,8 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
     else:
         ax = plt.subplot(subplotspec,projection=wcs)
 
-    #-- Display the 2MASS image
-    norm = astropy.visualization.ImageNormalize(img_hdu[0].data,
-                          interval=astropy.visualization.PercentileInterval(99.99),
-                      stretch=astropy.visualization.AsinhStretch(a=0.001))
-    plt.imshow(img_hdu[0].data, cmap='magma', norm=norm, origin='lower',
-               zorder=-50)  # negative zorder to be below pysiaf aperture fill zorder
+    #-- Display the background image
+    show_background_image(img_hdu)
 
 
     #-- Annotate coordinate grid
@@ -245,11 +365,15 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         # Plot (and check) the different possible GS reference stars
 
         # first, check if all guiding is on same guider
-        guiders_used = set()
-        for gs_id, gs in enumerate(visit.guide_activities):
-            guiders_used.add(gs.DETECTOR)
-        single_guider = len(guiders_used)==1
-        guide_det_info = f", on FGS{fgs_detector}" if single_guider else ", G1 or G2"
+        if visit.is_moving_target():
+            guide_det_info = f", on FGS 1 or 2 with moving target"
+
+        else:
+            guiders_used = set()
+            for gs_id, gs in enumerate(visit.guide_activities):
+                guiders_used.add(gs.DETECTOR)
+            single_guider = len(guiders_used)==1
+            guide_det_info = f", on FGS{fgs_detector}" if single_guider else ", G1 or G2"
 
         for gs_id, gs in enumerate(visit.guide_activities):
             if gs.args[1]=='FGSVERMAIN': continue
@@ -384,7 +508,7 @@ def plot_visit_fov(visit, verbose=False, subplotspec=None, use_dss=False, center
         mosaic_pos = np.asarray(mosaic_pos)
         plt.text(0.03, 0.95, f"with {len(mosaic_pos)} mosaic pointings, spanning {np.ptp(mosaic_pos[:,0]):.1f}, {np.ptp(mosaic_pos[:,1]):.1f} arcsec in FGS X,Y", color='cyan', fontweight='bold',
                  transform=ax.transAxes, fontsize=11, verticalalignment='top')
-    template_ypos = 0.94 if len(visit.template) > 35 else 0.98   # avoid text overlap for very long names
+    template_ypos = 0.92 if len(visit.template) > 35 else 0.955   # leave room for survey label; avoid overlap for very long names
     plt.text(0.98, template_ypos, f"Template = {visit.template}", color='white',
             transform=ax.transAxes, horizontalalignment='right',
             verticalalignment='top')
@@ -438,10 +562,7 @@ def plot_mosaic_pointings_fov(visitlist, center_on_visit=0, subplotspec=None, ve
     mcf_ra, mcf_dec = fgs_aperture.tel_to_sky(0, -468)  # RA, Dec of master chief ray location (between NIRCam A+B)
 
     # Retrieve image
-    if use_dss:
-        img_hdu = retrieve_dss_image(visit, ra=mcf_ra, dec=mcf_dec, verbose=verbose, fov=0.5)
-    else:
-        img_hdu = retrieve_2mass_image(visit, ra=mcf_ra, dec=mcf_dec, verbose=verbose, fov=0.5)
+    img_hdu = get_background_image(visit, ra=mcf_ra, dec=mcf_dec, use_dss=use_dss, verbose=verbose, fov=0.5)
 
     wcs = astropy.wcs.WCS(img_hdu[0].header)
 
@@ -452,12 +573,8 @@ def plot_mosaic_pointings_fov(visitlist, center_on_visit=0, subplotspec=None, ve
     else:
         ax = plt.subplot(subplotspec, projection=wcs)
 
-    # -- Display the 2MASS image
-    norm = astropy.visualization.ImageNormalize(img_hdu[0].data,
-                                                interval=astropy.visualization.PercentileInterval(99.99),
-                                                stretch=astropy.visualization.AsinhStretch(a=0.001))
-    plt.imshow(img_hdu[0].data, cmap='magma', norm=norm, origin='lower',
-               zorder=-50)  # negative zorder to be below pysiaf aperture fill zorder
+    # -- Display the background image
+    show_background_image(img_hdu)
 
     # use colormap to shade each visit distinctly:
     cmap = matplotlib.cm.cool
@@ -836,10 +953,12 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
 
     #print( vehicle_pitch.mean(), sun_pitch.mean(), vehicle_roll.mean(), sun_roll.mean())
 
-    with astropy.visualization.time_support():
+    plot_dates = matplotlib.dates.date2num(times.to_datetime())
 
-        ax_pitch.plot_date(times.plot_date, vehicle_pitch, ls='-', lw=3, marker=None, label='Vehicle pitch')
-        ax_pitch.plot_date(times.plot_date, sun_pitch, ls='--', lw=1, color='orange', marker=None, label='Sun pitch')
+    with astropy.visualization.time_support():
+        ax_pitch.plot(plot_dates, vehicle_pitch, ls='-', lw=3, marker=None, label='Vehicle pitch')
+        ax_pitch.plot(plot_dates, sun_pitch, ls='--', lw=1, color='orange', marker=None, label='Sun pitch')
+        ax_pitch.xaxis_date()
 
         ax_pitch.set_ylim(-10, 50)
         for lim in [-5, 45]:
@@ -849,12 +968,13 @@ def show_pitch_roll(visit, subplotspec_pitch=None, subplotspec_roll=None):
         ax_pitch.axhline(0, color='black', alpha=0.3, ls=":")
         # ax_pitch.set_xlabel("Date time [UTC]")
 
-        ax_roll.plot_date(times.plot_date, vehicle_roll, ls='-', lw=3, marker=None, label='Vehicle roll')
-        ax_roll.plot_date(times.plot_date, sun_roll, ls='--', lw=1, color='orange', marker=None, label='Sun roll')
+        ax_roll.plot(plot_dates, vehicle_roll, ls='-', lw=3, marker=None, label='Vehicle roll')
+        ax_roll.plot(plot_dates, sun_roll, ls='--', lw=1, color='orange', marker=None, label='Sun roll')
+        ax_roll.xaxis_date()
         ax_roll.set_ylim(-8, 8)
 
-        ax_roll.plot_date(times.plot_date, max_allowed_roll, ls='--', color='red', marker=None)
-        ax_roll.plot_date(times.plot_date, -max_allowed_roll, ls='--', color='red', marker=None)
+        ax_roll.plot(plot_dates, max_allowed_roll, ls='--', color='red', marker=None)
+        ax_roll.plot(plot_dates, -max_allowed_roll, ls='--', color='red', marker=None)
 
         ax_roll.set_ylabel("Roll\n[deg]")
         ax_roll.set_xlabel("Date time [UTC]")
@@ -988,9 +1108,10 @@ def plot_field_of_regard_on_date(date,
                                  mark_sun_pitch=None,
                                  label_circles=True, label_axes = True,
                                  label_ram_wake=True,
-                                 mark_maz=False,
+                                 mark_maz=True,
                                  figsize=(12, 6.75),
                                  point_density=4,
+                                 ax=None,
                                  save=True):
     """Plot JWST field of regard on a specified date.
 
@@ -1020,11 +1141,12 @@ def plot_field_of_regard_on_date(date,
         Figure size for Matplotlib
     point_density : int
         Number of scatter point plots per degree. Increase this to get a smoother plot, at a cost of slightly longer runtime to plot.
+    ax : matplotlib Axes instance
+        existing axis to plot or overplot into.
 
 
     """
 
-    plt.figure(figsize=figsize)
     npts = 360*point_density+1  # Higher than the default, for nice smooth plot output
 
     datetime = astropy.time.Time(date)
@@ -1041,8 +1163,10 @@ def plot_field_of_regard_on_date(date,
         yticklabels = ['8$^h$', '4$^h$', '0$^h$', '20$^h$', '16$^h$', '12$^h$']
 
     # Setup a map in Mollweide projection and label for RA and Dec.
-    ax = plt.gcf().add_subplot( projection='mollweide')
-    ax.set_title(f"All Sky\n[{frame_name} coords]\n")
+    if ax is None:
+        plt.figure(figsize=figsize)
+        ax = plt.gcf().add_subplot( projection='mollweide')
+        ax.set_title(f"All Sky\n[{frame_name} coords]\n")
     if label_axes:
         ax.set_ylabel(ylabel)
         ax.set_xlabel(xlabel)
@@ -1094,6 +1218,7 @@ def plot_field_of_regard_on_date(date,
                                  markersize=20, color='orange', markeredgecolor='darkorange', zorder=10,
                                  label=ramwake_label + "\ndirection", labelcolor='darkorange')
             if ramwake_label == 'Ram' and mark_maz:
+                print("MARKING MAZ")
                 # Plot MAZ boundary
                 pas = np.linspace(0,360, npts) * u.deg
                 with warnings.catch_warnings():

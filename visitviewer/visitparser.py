@@ -366,6 +366,9 @@ class VisitFileContents(object):
     def uses_guiding(self):
         return len(self.guide_activities) > 0
 
+    def is_moving_target(self):
+        return len(self.guide_activities) > 0 and self.guide_activities[0].args[1] == 'FGSMTMAIN'
+
     def uses_sams(self):
         return 'SCSAMMAIN' in [a.scriptname for a in self.si_activities]
 
@@ -443,7 +446,7 @@ class VisitFileContents(object):
         indx = gscandidate-1
 
         # Read pointing information from SLEW or FGSMAIN statements in the visit
-        if step == 'slew':
+        if step == 'slew' or self.is_moving_target():
             ra = visit.slews[indx].GSRA
             dec = visit.slews[indx].GSDEC
             pa = visit.slews[indx].GSPA
@@ -469,7 +472,7 @@ class VisitFileContents(object):
             y_idl = visit.guide_activities[indx].GSYID
             #print(ra,dec, pa, x_idl, y_idl, visit.guide_activities[indx].gsa)
         elif step == 'sci':
-            if self.uses_guiding():
+            if self.uses_guiding() and not self.is_moving_target():
                 # Guided visit, therefore read science attitude from the FGSMAIN call
                 try:
                     ra = visit.guide_activities[indx].GSRA
@@ -490,6 +493,7 @@ class VisitFileContents(object):
                     y_idl = visit.guide_activities[indx].GSYID
             else:
                 # Unguided visit, therefore infer science attitude must be same as slew attitude.
+                # or else moving target, for which we just show the slew attitude since MTs are time dependent for science.
                 ra = visit.slews[indx].GSRA
                 dec = visit.slews[indx].GSDEC
                 pa = visit.slews[indx].GSPA
